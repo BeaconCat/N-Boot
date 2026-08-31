@@ -3,6 +3,18 @@
 # (C) Copyright 2000 - 2013
 # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
 
+N-Boot downstream:
+==================
+
+This repository hosts N-Boot, the Pharos Tech downstream of U-Boot for
+Nyabula, KICKPI-K7, RK3576, NuttX, and openvela.  The downstream keeps the
+U-Boot project history and licenses intact.  Its KICKPI-K7 board support and
+NuttX A/B boot flow were implemented independently without copying Android
+vendor bootloader source code.
+
+See NBOOT.md for scope, build profiles, verified hardware behavior, and the
+boundary between upstream U-Boot and N-Boot-specific work.
+
 Summary:
 ========
 
