@@ -314,6 +314,13 @@ config CMD_BOOTM
 	help
 	  Boot an application image from the memory.
 
+config CMD_BOOTNUTTX
+	bool "bootnuttx"
+	depends on ARM64 && MMC && PARTITIONS && HASH && SHA256
+	help
+	  Load and verify a NuttX image selected by the KICKPI-K7 redundant
+	  boot-control metadata, then leave U-Boot and branch to its entry point.
+
 config CMD_BOOTM_PRE_LOAD
 	bool "enable pre-load on bootm"
 	depends on CMD_BOOTM
