@@ -169,8 +169,11 @@ static int k7_bootctrl_write(struct blk_desc *desc,
 static int k7_nuttx_partition(struct blk_desc *desc, int slot,
 			      struct disk_partition *partition)
 {
-	return part_get_info_by_name(desc, slot ? "nuttx_b" : "nuttx_a",
-				     partition);
+	int ret;
+
+	ret = part_get_info_by_name(desc, slot ? "nuttx_b" : "nuttx_a",
+				    partition);
+	return ret < 0 ? ret : 0;
 }
 
 static int k7_nuttx_load(struct blk_desc *desc,
