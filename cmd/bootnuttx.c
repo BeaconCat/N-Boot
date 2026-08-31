@@ -253,6 +253,7 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 	}
 
 	for (attempt = 0; attempt < 2; attempt++) {
+		bool metadata_dirty;
 		int chosen;
 		struct k7_slot_disk *slot;
 
@@ -261,10 +262,14 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 		if (chosen < 0)
 			break;
 		slot = &domain->slots[chosen];
+		metadata_dirty = domain->active_slot != chosen;
 		domain->active_slot = chosen;
 
 		if (!slot->successful) {
 			slot->tries_remaining--;
+			metadata_dirty = true;
+		}
+		if (metadata_dirty) {
 			ret = k7_bootctrl_write(desc, &bootctrl, records,
 						selected);
 			if (ret)
