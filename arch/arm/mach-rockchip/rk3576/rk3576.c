@@ -230,7 +230,8 @@ int checkboard(void)
 	char suffix[2];
 	int ret;
 
-	puts(banner);
+	if (IS_ENABLED(CONFIG_TARGET_KICKPI_K7_RK3576))
+		puts(banner);
 
 	if (!IS_ENABLED(CONFIG_ROCKCHIP_OTP) || !CONFIG_IS_ENABLED(MISC))
 		return 0;

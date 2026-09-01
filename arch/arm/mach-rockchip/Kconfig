@@ -449,7 +449,6 @@ config ROCKCHIP_RK3568
 config ROCKCHIP_RK3576
 	bool "Support Rockchip RK3576"
 	select ARM64
-	select LINUX_KERNEL_IMAGE_HEADER
 	select SUPPORT_SPL
 	select SPL
 	select CLK
@@ -760,7 +759,7 @@ config ROCKCHIP_MASKROM_IMAGE
 	  option to produce maskrom mode boot images containing U-Boot.
 
 config LNX_KRNL_IMG_TEXT_OFFSET_BASE
-	default 0x40000000 if ROCKCHIP_RK3576
+	default 0x40000000 if TARGET_KICKPI_K7_RK3576
 	default TEXT_BASE
 
 config ROCKCHIP_COMMON_STACK_ADDR
