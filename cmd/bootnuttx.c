@@ -6,12 +6,15 @@
 #include <blk.h>
 #include <command.h>
 #include <cpu_func.h>
+#include <fastboot.h>
 #include <hash.h>
+#include <linux/libfdt.h>
 #include <malloc.h>
 #include <mapmem.h>
 #include <mmc.h>
 #include <part.h>
 #include <u-boot/crc.h>
+#include <u-boot/sha256.h>
 #include <vsprintf.h>
 #include <asm/cache.h>
 #include <asm/u-boot-arm.h>
@@ -27,6 +30,7 @@
 #define K7_NUTTX_LOAD_ADDR       0x40200000UL
 #define K7_NUTTX_DOMAIN          0
 #define K7_SHA256_SIZE           32
+#define K7_RECOVERY_CHUNK        (64 * 1024)
 
 struct k7_slot_disk {
 	u8 priority;
@@ -86,6 +90,8 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 
 	if (desc->blksz != K7_BOOTCTRL_BLOCK_SIZE)
 		return -EPROTONOSUPPORT;
+	if (partition->size < K7_BOOTCTRL_BLOCKS * K7_BOOTCTRL_COPY_COUNT)
+		return -EINVAL;
 
 	for (index = 0; index < K7_BOOTCTRL_COPY_COUNT; index++) {
 		if (blk_dread(desc, partition->start + index * K7_BOOTCTRL_BLOCKS,
@@ -307,3 +313,189 @@ U_BOOT_CMD(bootnuttx, 2, 0, do_bootnuttx,
 	   "boot a verified NuttX A/B slot",
 	   "[mmc-device]\n"
 	   "    - load the selected NuttX slot at 0x40200000 and branch to it");
+
+#if IS_ENABLED(CONFIG_NBOOT_FASTBOOT)
+/* Hash from media, not from the download buffer. No slot is activated here. */
+static int k7_recovery_hash(struct blk_desc *desc,
+			    const struct disk_partition *part, u64 size,
+			    u8 digest[K7_SHA256_SIZE])
+{
+	sha256_context ctx;
+	u8 *buffer;
+	u64 offset = 0;
+	int ret = 0;
+
+	if (!size || desc->blksz != K7_BOOTCTRL_BLOCK_SIZE ||
+	    DIV_ROUND_UP(size, desc->blksz) > part->size)
+		return -EFBIG;
+	buffer = memalign(ARCH_DMA_MINALIGN, K7_RECOVERY_CHUNK);
+	if (!buffer)
+		return -ENOMEM;
+	sha256_starts(&ctx);
+	while (offset < size) {
+		u32 bytes = min_t(u64, size - offset, K7_RECOVERY_CHUNK);
+		lbaint_t blocks = DIV_ROUND_UP(bytes, desc->blksz);
+
+		if (blk_dread(desc, part->start + offset / desc->blksz,
+			      blocks, buffer) != blocks) {
+			ret = -EIO;
+			break;
+		}
+		sha256_update(&ctx, buffer, bytes);
+		offset += bytes;
+	}
+	if (!ret)
+		sha256_finish(&ctx, digest);
+	free(buffer);
+	return ret;
+}
+
+static int k7_recovery_flash(struct blk_desc *desc,
+			     const struct disk_partition *control,
+			     const struct disk_partition *part,
+			     struct k7_bootctrl_disk *records, int selected,
+			     struct k7_slot_disk *slot, const void *data,
+			     u32 size)
+{
+	u8 digest[K7_SHA256_SIZE], actual[K7_SHA256_SIZE];
+	u8 *tail;
+	lbaint_t blocks = size / desc->blksz;
+	u32 remainder = size % desc->blksz;
+	int digest_size = sizeof(digest);
+	u64 version = le64_to_cpu(slot->image_version) + 1;
+	int ret;
+
+	if (!size || DIV_ROUND_UP((u64)size, desc->blksz) > part->size)
+		return -EFBIG;
+	if ((!strncmp(part->name, "nuttx_", 6) &&
+	     (size < 60 || memcmp((const u8 *)data + 56, "ARMd", 4))) ||
+	    (!strncmp(part->name, "amp_", 4) && fdt_check_header(data)))
+		return -ENOEXEC;
+	ret = hash_block("sha256", data, size, digest, &digest_size);
+	if (ret || digest_size != sizeof(digest))
+		return -EINVAL;
+	tail = memalign(ARCH_DMA_MINALIGN, desc->blksz);
+	if (!tail)
+		return -ENOMEM;
+	/* Invalidate before the first payload write, including on interrupted OTA. */
+	memset(slot, 0, sizeof(*slot));
+	ret = k7_bootctrl_write(desc, control, records, selected);
+	if (ret)
+		goto out;
+	if (blocks && blk_dwrite(desc, part->start, blocks, data) != blocks) {
+		ret = -EIO;
+		goto out;
+	}
+	if (remainder) {
+		memset(tail, 0, desc->blksz);
+		memcpy(tail, (const u8 *)data + blocks * desc->blksz, remainder);
+		if (blk_dwrite(desc, part->start + blocks, 1, tail) != 1) {
+			ret = -EIO;
+			goto out;
+		}
+	}
+	ret = k7_recovery_hash(desc, part, size, actual);
+	if (ret || memcmp(actual, digest, sizeof(digest))) {
+		ret = ret ? ret : -EKEYREJECTED;
+		goto out;
+	}
+	/* Keep priority zero: activation is a separate, verified operation. */
+	slot->image_size = cpu_to_le64(size);
+	slot->image_version = cpu_to_le64(version);
+	memcpy(slot->sha256, digest, sizeof(digest));
+	ret = k7_bootctrl_write(desc, control, records, selected);
+out:
+	free(tail);
+	return ret;
+}
+
+void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
+{
+	static const char * const names[] = {
+		"nuttx_a", "nuttx_b", "amp_a", "amp_b"
+	};
+	struct k7_bootctrl_disk *records;
+	struct disk_partition control, part;
+	struct k7_domain_disk *domain;
+	struct k7_slot_disk *slot;
+	struct blk_desc *desc;
+	struct mmc *mmc;
+	u8 digest[K7_SHA256_SIZE];
+	const char *name;
+	bool flash;
+	int i, selected, ret;
+
+	if (!parameter) {
+		fastboot_fail("expected flash:<slot> or activate:<slot>", response);
+		return;
+	}
+	flash = !strncmp(parameter, "flash:", 6);
+	if (!flash && strncmp(parameter, "activate:", 9)) {
+		fastboot_fail("unsupported recovery operation", response);
+		return;
+	}
+	name = parameter + (flash ? 6 : 9);
+	for (i = 0; i < ARRAY_SIZE(names); i++)
+		if (!strcmp(name, names[i]))
+			break;
+	if (i == ARRAY_SIZE(names)) {
+		fastboot_fail("partition is not in recovery allowlist", response);
+		return;
+	}
+	mmc = find_mmc_device(0);
+	if (!mmc || mmc_init(mmc)) {
+		fastboot_fail("SD device unavailable", response);
+		return;
+	}
+	desc = mmc_get_blk_desc(mmc);
+	if (desc->blksz != K7_BOOTCTRL_BLOCK_SIZE ||
+	    part_get_info_by_name(desc, "bootctrl", &control) < 0 ||
+	    part_get_info_by_name(desc, name, &part) < 0) {
+		fastboot_fail("invalid recovery partition layout", response);
+		return;
+	}
+	records = memalign(ARCH_DMA_MINALIGN, sizeof(*records) * 2);
+	if (!records) {
+		fastboot_fail("out of memory", response);
+		return;
+	}
+	ret = k7_bootctrl_read(desc, &control, records, &selected);
+	if (ret)
+		goto out;
+	domain = &records[selected].domains[i / 2];
+	slot = &domain->slots[i % 2];
+	if (flash) {
+		if (k7_bootctrl_choose(domain) == i % 2) {
+			ret = -EBUSY;
+			goto out;
+		}
+		ret = k7_recovery_flash(desc, &control, &part, records,
+					selected, slot, data, size);
+	} else {
+		ret = k7_recovery_hash(desc, &part,
+				       le64_to_cpu(slot->image_size), digest);
+		if (ret || memcmp(digest, slot->sha256, sizeof(digest))) {
+			ret = ret ? ret : -EKEYREJECTED;
+			goto out;
+		}
+		domain->active_slot = i % 2;
+		slot->priority = 15;
+		slot->tries_remaining = 3;
+		slot->successful = 0;
+		if (domain->slots[1 - i % 2].priority == 15)
+			domain->slots[1 - i % 2].priority = 14;
+		ret = k7_bootctrl_write(desc, &control, records, selected);
+	}
+out:
+	free(records);
+	if (ret) {
+		char error[48];
+
+		snprintf(error, sizeof(error), "recovery rejected (%d)", ret);
+		fastboot_fail(error, response);
+	} else {
+		fastboot_okay(flash ? "verified; activate separately" : "slot activated",
+			      response);
+	}
+}
+#endif
