@@ -28,6 +28,8 @@ are external Rockchip components and are not relicensed by this repository.
 - automatic rejection of a damaged slot and same-boot fallback;
 - atomic persistence of the selected active slot;
 - automatic NuttX startup through `bootnuttx 0`.
+- USB2 Fastboot recovery when no NuttX slot remains bootable;
+- allowlisted, read-back-verified staging of inactive NuttX and AMP slots.
 
 ## Build profiles
 
@@ -68,6 +70,10 @@ tree does not yet fit beside two independent 2 MiB bootloader candidates.
 NuttX and AMP Linux retain independent A/B partitions, but redundant N-Boot
 payloads require a smaller runtime device tree or a revised vendor-compatible
 layout before being claimed as complete.
+
+Fastboot recovery is compile-tested only. Generic partition flash and erase,
+arbitrary OEM commands, boot-control writes, and N-Boot self-update remain
+disabled until the hardware fault-injection matrix is complete.
 
 ## Licensing and upstream
 

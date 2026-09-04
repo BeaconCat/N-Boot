@@ -69,7 +69,7 @@ flowchart TD
 | 损坏槽自动回退 | 同一启动周期拒绝A并启动B | 实机通过 |
 | active槽持久化 | 仅状态变化时写盘，稳定启动不磨损 | 实机通过 |
 | 自动启动 | 倒计时后执行`bootnuttx 0` | 实机通过 |
-| USB Fastboot救援 | DWC3/USB2 gadget分阶段接入 | 规划中 |
+| USB Fastboot救援 | USB2 gadget、自动故障进入与受控线刷 | 编译通过 |
 | NuttX/AMP统一OTA | 独立domain与非活动槽更新 | 规划中 |
 
 ## A/B元数据模型
@@ -142,6 +142,32 @@ bootnuttx: booting NuttX slot b, version 1
 
 ## 构建
 
+## Fastboot恢复与线刷
+
+full profile在NuttX没有可启动槽时自动进入USB2 Fastboot。也可以从N-Boot
+控制台运行：
+
+```text
+fastboot usb 0
+```
+
+通用`flash`、`erase`、`oem run`和UUU命令保持禁用。允许的恢复流程为：
+
+```sh
+fastboot stage nuttx.bin
+fastboot oem board:flash:nuttx_b
+fastboot oem board:activate:nuttx_b
+fastboot reboot
+```
+
+允许的目标仅为`nuttx_a`、`nuttx_b`、`amp_a`和`amp_b`。写入当前可启动槽会
+被拒绝；目标槽在payload写入前先失效，写完必须从介质读回验证，且刷写和激活为
+两个独立操作。N-Boot、bootctrl、GPT、IDBlock、ATF和OP-TEE均不在白名单内。
+
+> [!WARNING]
+> Fastboot恢复路径目前仅完成编译验证，需在KICKPI-K7上完成USB枚举、断线和
+> 断电故障注入后才能升级为实机通过。
+
 ### minimal恢复profile
 
 ```sh
@@ -193,7 +219,7 @@ bootloader候选，因此：
 - [x] NuttX SHA-256验证启动
 - [x] bootctrl双副本与A/B回退
 - [x] active槽持久化与自动启动
-- [ ] USB2 Fastboot只读枚举
+- [~] USB2 Fastboot枚举与受控A/B线刷（编译通过，待上板）
 - [ ] 双槽均失效时自动进入恢复模式
 - [ ] 白名单Fastboot分区刷写
 - [ ] N-Boot双候选更新
