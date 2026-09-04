@@ -60,6 +60,10 @@ static const struct {
 		.command = "download",
 		.dispatch = download
 	},
+	[FASTBOOT_COMMAND_STAGE] = {
+		.command = "stage",
+		.dispatch = okay
+	},
 	[FASTBOOT_COMMAND_FLASH] =  {
 		.command = "flash",
 		.dispatch = CONFIG_IS_ENABLED(FASTBOOT_FLASH, (flash), (NULL))
