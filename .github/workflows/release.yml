@@ -1,0 +1,44 @@
+name: Publish N-Boot binaries
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bc bison build-essential device-tree-compiler flex \
+            gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev \
+            python3-setuptools swig
+      - name: Build and verify
+        run: |
+          make O=build CROSS_COMPILE=aarch64-linux-gnu- \
+            kickpi-k7-rk3576-full_defconfig
+          make O=build CROSS_COMPILE=aarch64-linux-gnu- -j2 \
+            u-boot-nodtb.bin u-boot.dtb
+          cp build/u-boot-nodtb.bin nboot-kickpi-k7.bin
+          cp build/u-boot.dtb nboot-kickpi-k7.dtb
+          python3 - <<'PY'
+          import pathlib, struct
+          data = pathlib.Path("nboot-kickpi-k7.bin").read_bytes()[:64]
+          assert data[56:60] == b"ARMd"
+          assert struct.unpack_from("<Q", data, 8)[0] == 0x200000
+          assert pathlib.Path("nboot-kickpi-k7.dtb").read_bytes()[:4] == bytes.fromhex("d00dfeed")
+          PY
+          sha256sum nboot-kickpi-k7.bin nboot-kickpi-k7.dtb > SHA256SUMS
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            nboot-kickpi-k7.bin nboot-kickpi-k7.dtb SHA256SUMS \
+            --clobber
