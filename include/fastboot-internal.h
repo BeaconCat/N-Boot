@@ -3,6 +3,8 @@
 #ifndef _FASTBOOT_INTERNAL_H_
 #define _FASTBOOT_INTERNAL_H_
 
+#include <linux/types.h>
+
 /**
  * fastboot_buf_addr - base address of the fastboot download buffer
  */
@@ -39,5 +41,15 @@ void fastboot_getvar_all(char *response);
  * function to return the requested value.
  */
 void fastboot_getvar(char *cmd_parameter, char *response);
+
+/**
+ * fastboot_oem_board() - run a board-owned Fastboot operation
+ * @parameter: board operation and arguments
+ * @data: staged download buffer
+ * @size: staged download size
+ * @response: Fastboot response buffer
+ */
+void fastboot_oem_board(char *parameter, void *data, u32 size,
+			char *response);
 
 #endif
