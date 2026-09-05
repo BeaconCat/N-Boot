@@ -8,7 +8,6 @@
 #include <cpu_func.h>
 #include <fastboot.h>
 #include <hash.h>
-#include <linux/libfdt.h>
 #include <malloc.h>
 #include <mapmem.h>
 #include <mmc.h>
@@ -368,9 +367,7 @@ static int k7_recovery_flash(struct blk_desc *desc,
 
 	if (!size || DIV_ROUND_UP((u64)size, desc->blksz) > part->size)
 		return -EFBIG;
-	if ((!strncmp(part->name, "nuttx_", 6) &&
-	     (size < 60 || memcmp((const u8 *)data + 56, "ARMd", 4))) ||
-	    (!strncmp(part->name, "amp_", 4) && fdt_check_header(data)))
+	if (size < 60 || memcmp((const u8 *)data + 56, "ARMd", 4))
 		return -ENOEXEC;
 	ret = hash_block("sha256", data, size, digest, &digest_size);
 	if (ret || digest_size != sizeof(digest))
@@ -413,7 +410,7 @@ out:
 void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 {
 	static const char * const names[] = {
-		"nuttx_a", "nuttx_b", "amp_a", "amp_b"
+		"nuttx_a", "nuttx_b"
 	};
 	struct k7_bootctrl_disk *records;
 	struct disk_partition control, part;
