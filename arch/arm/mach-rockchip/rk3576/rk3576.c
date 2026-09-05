@@ -44,6 +44,13 @@
 #define USB_GRF_BASE		0x2601E000
 #define USB3OTG0_CON1		0x0030
 
+#define USB2PHY0_GRF_BASE	0x2602E000
+#define USB2PHY_GRF_DBG_CON	0x0040
+#define USB2PHY_GRF_LS_TIMEOUT	0x0044
+#define USB2PHY_GRF_LS_DEB	0x0048
+#define USB2PHY_GRF_RX_TIMEOUT	0x004c
+#define USB2PHY_GRF_SEQ_LIMIT	0x0050
+
 enum {
 	BROM_BOOTSOURCE_FSPI0 = 3,
 	BROM_BOOTSOURCE_FSPI1_M1 = 6,
@@ -96,6 +103,27 @@ static struct mm_region rk3576_mem_map[] = {
 };
 
 struct mm_region *mem_map = rk3576_mem_map;
+
+#if CONFIG_IS_ENABLED(NBOOT_FASTBOOT)
+static void nboot_usb_recovery_init(void)
+{
+	/* Keep the USB2-only gadget path independent of an absent USB3 PHY. */
+	writel(0x000c0008, USB_GRF_BASE + USB3OTG0_CON1);
+
+	/* Bound line-state recovery while the cable changes roles. */
+	writel(0xff, USB2PHY0_GRF_BASE + USB2PHY_GRF_LS_TIMEOUT);
+	writel(0x10, USB2PHY0_GRF_BASE + USB2PHY_GRF_LS_DEB);
+	writel(0xffff, USB2PHY0_GRF_BASE + USB2PHY_GRF_RX_TIMEOUT);
+	writel(0x05, USB2PHY0_GRF_BASE + USB2PHY_GRF_SEQ_LIMIT);
+	writel(0x00010001, USB2PHY0_GRF_BASE + USB2PHY_GRF_DBG_CON);
+}
+
+int rk_board_late_init(void)
+{
+	nboot_usb_recovery_init();
+	return 0;
+}
+#endif
 
 void board_debug_uart_init(void)
 {
