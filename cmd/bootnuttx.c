@@ -12,6 +12,7 @@
 #include <mapmem.h>
 #include <mmc.h>
 #include <nboot_recovery.h>
+#include <nboot_update.h>
 #include <part.h>
 #include <u-boot/crc.h>
 #include <u-boot/sha256.h>
@@ -429,6 +430,14 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 	}
 	if (nboot_recovery_unlock(parameter, response))
 		return;
+	if (!strcmp(parameter, "flash:nboot")) {
+		ret = nboot_update(data, size);
+		if (ret)
+			fastboot_fail("N-Boot update rejected", response);
+		else
+			fastboot_okay("N-Boot image verified after write", response);
+		return;
+	}
 	flash = !strncmp(parameter, "flash:", 6);
 	if (!flash && strncmp(parameter, "activate:", 9)) {
 		fastboot_fail("unsupported recovery operation", response);
