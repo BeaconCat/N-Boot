@@ -22,7 +22,6 @@ jobs:
       - name: Run focused tests
         run: |
           python3 tools/nboot/test_bootctrl.py
-          dash -n tools/nboot/build_sd_image.sh
 
   build:
     name: build ${{ matrix.config }}

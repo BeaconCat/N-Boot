@@ -1995,4 +1995,6 @@ S:	Maintained
 F:	cmd/bootnuttx.c
 F:	cmd/nboot_*.c
 F:	include/nboot_*.h
-F:	tools/nboot/
+F:	tools/nboot/bootctrl.py
+F:	tools/nboot/request_recovery.py
+F:	tools/nboot/test_bootctrl.py
