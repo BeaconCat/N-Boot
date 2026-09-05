@@ -38,18 +38,6 @@ Run the focused tests:
 python3 -m unittest tools/nboot/test_bootctrl.py
 ```
 
-Build the 4 GiB KICKPI-K7 recovery and A/B card image:
-
-```sh
-tools/nboot/build_sd_image.sh \
-  idbloader.img nboot.img trust.img nuttx.bin nyabula-ab.img
-```
-
-The image contains the vendor-compatible 4 MiB N-Boot region, redundant
-boot-control records, initialized NuttX A/B slots, reserved AMP A/B slots, and
-a data partition. External Rockchip boot components keep their original
-licenses and are inputs rather than repository artifacts.
-
 To enter `N-Boot>` when the full profile uses zero boot delay, run the serial
 sender while resetting the board:
 
