@@ -1,5 +1,12 @@
 if ROCKCHIP_RK3576
 
+config TARGET_KICKPI_K7_RK3576
+	bool "KICKPI K7 N-Boot downstream"
+	select LINUX_KERNEL_IMAGE_HEADER
+	help
+	  Enable the KICKPI K7 N-Boot board contract, including the native
+	  ARM64 Image header required by the vendor BL31 boot chain.
+
 config TARGET_ROC_PC_RK3576
 	bool "Firefly ROC-RK3576-PC"
 	help

@@ -1,0 +1,105 @@
+name: N-Boot gates
+
+on:
+  pull_request:
+    branches:
+      - n-boot/main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootctrl:
+    name: bootctrl format and redundancy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check Python syntax
+        run: python3 -m py_compile tools/nboot/bootctrl.py
+      - name: Run focused tests
+        run: python3 -m unittest tools/nboot/test_bootctrl.py
+
+  build:
+    name: build ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: kickpi-k7-rk3576_defconfig
+            output: minimal
+            nboot: true
+          - config: kickpi-k7-rk3576-full_defconfig
+            output: full
+            nboot: true
+          - config: generic-rk3576_defconfig
+            output: generic
+            nboot: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            bc bison build-essential device-tree-compiler flex \
+            gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev \
+            python3-setuptools swig
+
+      - name: Configure
+        run: |
+          make O=build CROSS_COMPILE=aarch64-linux-gnu- \
+            ${{ matrix.config }}
+
+      - name: Verify configuration scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.nboot }}" == "true" ]]; then
+            grep -qx 'CONFIG_TARGET_KICKPI_K7_RK3576=y' build/.config
+            grep -qx 'CONFIG_LINUX_KERNEL_IMAGE_HEADER=y' build/.config
+            grep -qx 'CONFIG_LNX_KRNL_IMG_TEXT_OFFSET_BASE=0x40000000' \
+              build/.config
+            grep -qx 'CONFIG_TEXT_BASE=0x40200000' build/.config
+            grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx 0"' build/.config
+          else
+            ! grep -q '^CONFIG_TARGET_KICKPI_K7_RK3576=' build/.config
+            ! grep -q '^CONFIG_LINUX_KERNEL_IMAGE_HEADER=y$' build/.config
+            grep -qx 'CONFIG_LNX_KRNL_IMG_TEXT_OFFSET_BASE=0x40800000' \
+              build/.config
+            grep -qx 'CONFIG_TEXT_BASE=0x40800000' build/.config
+          fi
+
+      - name: Build U-Boot proper and device tree
+        run: |
+          make O=build CROSS_COMPILE=aarch64-linux-gnu- -j2 \
+            u-boot-nodtb.bin u-boot.dtb
+
+      - name: Verify binary contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.nboot }}" == "true" ]]; then
+            aarch64-linux-gnu-nm -n build/u-boot |
+              grep -q '^0000000040200000 T _start$'
+            strings build/u-boot-nodtb.bin | grep -q 'N - Boot'
+            python3 - <<'PY'
+          import pathlib
+          import struct
+
+          header = pathlib.Path("build/u-boot-nodtb.bin").read_bytes()[:64]
+          assert header[56:60] == b"ARMd"
+          assert struct.unpack_from("<Q", header, 8)[0] == 0x200000
+          PY
+          else
+            ! strings build/u-boot-nodtb.bin | grep -q 'N - Boot'
+          fi
+
+      - name: Verify canonical defconfig
+        run: |
+          make O=build CROSS_COMPILE=aarch64-linux-gnu- savedefconfig
+          diff -u configs/${{ matrix.config }} build/defconfig
+
+      - name: Check patch whitespace
+        run: git diff --check

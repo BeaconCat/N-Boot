@@ -1989,3 +1989,7 @@ T:	git https://git.u-boot-project.org/u-boot/u-boot.git
 F:	configs/tools-only_defconfig
 F:	*
 F:	*/
+KICKPI-K7 BOOTNUTTX COMMAND
+M:	BeaconCat <2262965540@qq.com>
+S:	Maintained
+F:	cmd/bootnuttx.c

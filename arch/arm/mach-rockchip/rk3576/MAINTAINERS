@@ -4,6 +4,13 @@ S:	Maintained
 F:	arch/arm/dts/rk3576-generic*
 F:	configs/generic-rk3576_defconfig
 
+KICKPI-K7-RK3576
+M:	BeaconCat <2262965540@qq.com>
+S:	Maintained
+F:	arch/arm/dts/rk3576-kickpi-k7*
+F:	configs/kickpi-k7-rk3576_defconfig
+F:	configs/kickpi-k7-rk3576-full_defconfig
+
 NANOPI-M5-RK3576
 M:	Jonas Karlman <jonas@kwiboo.se>
 S:	Maintained

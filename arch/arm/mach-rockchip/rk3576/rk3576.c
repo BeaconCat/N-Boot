@@ -211,10 +211,27 @@ int arch_cpu_init(void)
 
 int checkboard(void)
 {
+	static const char banner[] =
+		"\n"
+		"     __                _             _        \n"
+		"  /\\ \\ \\ _   _   __ _ | |__   _   _ | |  __ _ \n"
+		" /  \\/ /| | | | / _` || '_ \\ | | | || | / _` |\n"
+		"/ /\\  / | |_| || (_| || |_) || |_| || || (_| |\n"
+		"\\_\\ \\/   \\__, | \\__,_||_.__/  \\__,_||_| \\__,_|\n"
+		"         |___/                                \n"
+		"   ___                _                       \n"
+		"  / __\\  ___    ___  | |_                     \n"
+		" /__\\// / _ \\  / _ \\ | __|      N - Boot\n"
+		"/ \\/  \\| (_) || (_) || |_        RK3576 \n"
+		"\\_____/ \\___/  \\___/  \\__|                   \n"
+		"\n";
 	u8 cpu_code[2], specification;
 	struct udevice *dev;
 	char suffix[2];
 	int ret;
+
+	if (IS_ENABLED(CONFIG_TARGET_KICKPI_K7_RK3576))
+		puts(banner);
 
 	if (!IS_ENABLED(CONFIG_ROCKCHIP_OTP) || !CONFIG_IS_ENABLED(MISC))
 		return 0;
