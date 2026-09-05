@@ -54,10 +54,14 @@
 	status = "okay";
 };
 
+&usbdp_phy {
+	status = "okay";
+};
+
 &usb_drd0_dwc3 {
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
-	phys = <&u2phy0_otg>;
-	phy-names = "usb2-phy";
+	phys = <&u2phy0_otg>, <&usbdp_phy PHY_TYPE_USB3>;
+	phy-names = "usb2-phy", "usb3-phy";
 	status = "okay";
 };
