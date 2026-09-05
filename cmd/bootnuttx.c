@@ -12,6 +12,7 @@
 #include <malloc.h>
 #include <mapmem.h>
 #include <mmc.h>
+#include <nboot_recovery.h>
 #include <part.h>
 #include <u-boot/crc.h>
 #include <u-boot/sha256.h>
@@ -429,6 +430,8 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 		fastboot_fail("expected flash:<slot> or activate:<slot>", response);
 		return;
 	}
+	if (nboot_recovery_unlock(parameter, response))
+		return;
 	flash = !strncmp(parameter, "flash:", 6);
 	if (!flash && strncmp(parameter, "activate:", 9)) {
 		fastboot_fail("unsupported recovery operation", response);
@@ -465,7 +468,8 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 	domain = &records[selected].domains[i / 2];
 	slot = &domain->slots[i % 2];
 	if (flash) {
-		if (k7_bootctrl_choose(domain) == i % 2) {
+		if (k7_bootctrl_choose(domain) == i % 2 &&
+		    !nboot_recovery_authorized()) {
 			ret = -EBUSY;
 			goto out;
 		}

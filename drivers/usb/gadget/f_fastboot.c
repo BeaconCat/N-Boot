@@ -14,6 +14,7 @@
 #include <env.h>
 #include <errno.h>
 #include <fastboot.h>
+#include <nboot_recovery.h>
 #include <log.h>
 #include <malloc.h>
 #include <linux/printk.h>
@@ -279,6 +280,8 @@ static void fastboot_disable(struct usb_function *f)
 {
 	struct f_fastboot *f_fb = func_to_fastboot(f);
 
+	if (IS_ENABLED(CONFIG_NBOOT_FASTBOOT))
+		nboot_recovery_reset();
 	usb_ep_disable(f_fb->out_ep);
 	usb_ep_disable(f_fb->in_ep);
 

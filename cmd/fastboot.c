@@ -10,6 +10,7 @@
 #include <console.h>
 #include <g_dnl.h>
 #include <fastboot.h>
+#include <nboot_recovery.h>
 #include <net.h>
 #include <usb.h>
 #include <watchdog.h>
@@ -168,6 +169,8 @@ NXTARG:
 	}
 
 	fastboot_init((void *)buf_addr, buf_size);
+	if (IS_ENABLED(CONFIG_NBOOT_FASTBOOT))
+		nboot_recovery_reset();
 
 #if CONFIG_IS_ENABLED(NET_LEGACY)
 	if (!strcmp(argv[1], "udp"))
