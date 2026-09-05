@@ -7,6 +7,16 @@ config TARGET_KICKPI_K7_RK3576
 	  Enable the KICKPI K7 N-Boot board contract, including the native
 	  ARM64 Image header required by the vendor BL31 boot chain.
 
+config NBOOT_FASTBOOT
+	bool "N-Boot controlled USB recovery"
+	depends on TARGET_KICKPI_K7_RK3576 && USB_GADGET
+	select USB_FUNCTION_FASTBOOT
+	select FASTBOOT_OEM_BOARD
+	help
+	  Enable verified NuttX A/B and N-Boot updates. Generic
+	  partition writes require a short-lived two-command confirmation.
+	  Erase and arbitrary command execution stay disabled.
+
 config TARGET_ROC_PC_RK3576
 	bool "Firefly ROC-RK3576-PC"
 	help

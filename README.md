@@ -48,7 +48,7 @@ flowchart TD
     NB --> BC{bootctrl 双副本}
     BC -->|A 有效| A[NuttX A]
     BC -->|A 拒绝| B[NuttX B]
-    BC -->|均不可启动| REC[Recovery / Fastboot 规划中]
+    BC -->|均不可启动| REC[USB Fastboot Recovery]
     A --> OK[openvela / Nyabula]
     B --> OK
 ```
@@ -69,8 +69,8 @@ flowchart TD
 | 损坏槽自动回退 | 同一启动周期拒绝A并启动B | 实机通过 |
 | active槽持久化 | 仅状态变化时写盘，稳定启动不磨损 | 实机通过 |
 | 自动启动 | 倒计时后执行`bootnuttx 0` | 实机通过 |
-| USB Fastboot救援 | DWC3/USB2 gadget分阶段接入 | 规划中 |
-| NuttX/AMP统一OTA | 独立domain与非活动槽更新 | 规划中 |
+| USB Fastboot救援 | USB gadget、自动故障进入与受控线刷 | 实机通过 |
+| NuttX A/B OTA | 独立槽、回读校验与显式激活 | 实机通过 |
 
 ## A/B元数据模型
 
@@ -142,6 +142,50 @@ bootnuttx: booting NuttX slot b, version 1
 
 ## 构建
 
+## Fastboot恢复与线刷
+
+full profile在NuttX没有可启动槽时自动进入USB2 Fastboot。也可以从N-Boot
+控制台运行：
+
+```text
+fastboot usb 0
+```
+
+full profile默认零秒启动。需要进入交互式`N-Boot>`时，在复位期间持续发送单字节
+`!`，或运行`tools/nboot/request_recovery.py --port <serial>`；该入口不依赖可见
+倒计时。
+
+日常NuttX恢复不需要解锁高级模式：
+
+```sh
+fastboot stage nuttx.bin
+fastboot oem board:flash:nuttx_b
+fastboot oem board:activate:nuttx_b
+fastboot reboot
+```
+
+允许的受控目标仅为`nuttx_a`和`nuttx_b`。写入当前可启动槽会被拒绝；目标槽在
+payload写入前先失效，写完从介质读回验证，且刷写和激活为两个独立操作。
+
+高级通用分区写入与N-Boot本体更新必须先完成短时随机挑战：
+
+```sh
+fastboot oem board:unlock-request
+fastboot getvar nboot-challenge
+fastboot oem board:unlock-confirm:<challenge>
+fastboot flash nboot nboot.img
+fastboot oem board:lock
+```
+
+授权在120秒后、USB断开后或显式`lock`后失效。`erase`、`boot`、`set_active`、
+`oem run`和UUU保持禁用；`uboot`、`trust`与`bootctrl`禁止走通用写入。N-Boot
+本体只接受vendor兼容的4 MiB FIT，完整验证六段SHA-256、ARM64 header、内嵌K7
+DTB及分区布局后写入，并进行全分区回读比较。
+
+> [!WARNING]
+> Fastboot已在KICKPI-K7实测枚举为`18d1:d00d`，NuttX B槽写入、回读、激活、
+> 重启以及N-Boot本体4 MiB原位更新均已通过。N-Boot写入过程中仍禁止断电。
+
 ### minimal恢复profile
 
 ```sh
@@ -162,7 +206,7 @@ make CROSS_COMPILE=aarch64-linux-gnu- -j4 u-boot-nodtb.bin u-boot.dtb
 CONFIG_TEXT_BASE=0x40200000
 CONFIG_LINUX_KERNEL_IMAGE_HEADER=y
 CONFIG_LNX_KRNL_IMG_TEXT_OFFSET_BASE=0x40000000
-CONFIG_BOOTCOMMAND="bootnuttx 0"
+CONFIG_BOOTCOMMAND="if bootnuttx 0; then true; else fastboot usb 0; fi"
 ```
 
 > [!NOTE]
@@ -179,13 +223,13 @@ CONFIG_BOOTCOMMAND="bootnuttx 0"
 
 ## 当前限制
 
-当前实机验证FIT为4 MiB。clean K7 DTB尚未压缩到可同时容纳两个独立2 MiB
-bootloader候选，因此：
+vendor SPL的固定候选间距为2 MiB，但可启动FIT必须保留vendor的4 MiB布局，两个
+候选物理重叠。因此：
 
 - NuttX A/B已经完成；
-- AMP Linux已预留独立A/B模型；
-- N-Boot自身双候选尚未宣称完成；
-- 后续优先裁剪运行时DT，恢复vendor SPL固定的`0x4000/0x5000`双候选。
+- AMP Linux仅预留独立A/B分区，本PR不实现其刷写；
+- N-Boot采用完整校验、单区域原位更新，不宣称断电原子性；
+- IDBlock、GPT、trust和bootctrl不允许经通用Fastboot修改。
 
 ## 路线图
 
@@ -193,10 +237,10 @@ bootloader候选，因此：
 - [x] NuttX SHA-256验证启动
 - [x] bootctrl双副本与A/B回退
 - [x] active槽持久化与自动启动
-- [ ] USB2 Fastboot只读枚举
-- [ ] 双槽均失效时自动进入恢复模式
-- [ ] 白名单Fastboot分区刷写
-- [ ] N-Boot双候选更新
+- [x] USB Fastboot枚举与受控A/B线刷
+- [x] 双槽均失效时自动进入恢复模式
+- [x] 二次确认后的高级通用分区写入
+- [x] 校验后N-Boot本体更新
 - [ ] NuttX/AMP Linux统一OTA manifest
 - [ ] 签名验证与anti-rollback
 

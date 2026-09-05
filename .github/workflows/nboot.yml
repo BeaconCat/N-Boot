@@ -16,9 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check Python syntax
-        run: python3 -m py_compile tools/nboot/bootctrl.py
+        run: |
+          python3 -m py_compile tools/nboot/bootctrl.py
+          python3 -m py_compile tools/nboot/request_recovery.py
       - name: Run focused tests
-        run: python3 -m unittest tools/nboot/test_bootctrl.py
+        run: |
+          python3 tools/nboot/test_bootctrl.py
 
   build:
     name: build ${{ matrix.config }}
@@ -30,12 +33,15 @@ jobs:
           - config: kickpi-k7-rk3576_defconfig
             output: minimal
             nboot: true
+            recovery: false
           - config: kickpi-k7-rk3576-full_defconfig
             output: full
             nboot: true
+            recovery: true
           - config: generic-rk3576_defconfig
             output: generic
             nboot: false
+            recovery: false
     steps:
       - uses: actions/checkout@v6
 
@@ -62,7 +68,21 @@ jobs:
             grep -qx 'CONFIG_LNX_KRNL_IMG_TEXT_OFFSET_BASE=0x40000000' \
               build/.config
             grep -qx 'CONFIG_TEXT_BASE=0x40200000' build/.config
-            grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx 0"' build/.config
+            if [[ "${{ matrix.recovery }}" == "true" ]]; then
+              grep -qx 'CONFIG_NBOOT_FASTBOOT=y' build/.config
+              grep -qx 'CONFIG_USB_FUNCTION_FASTBOOT=y' build/.config
+              grep -qx 'CONFIG_FASTBOOT_FLASH=y' build/.config
+              grep -qx 'CONFIG_FASTBOOT_FLASH_MMC=y' build/.config
+              grep -qx 'CONFIG_USB_GADGET_VENDOR_NUM=0x18d1' build/.config
+              grep -qx 'CONFIG_USB_GADGET_PRODUCT_NUM=0xd00d' build/.config
+              grep -qx 'CONFIG_BOOTDELAY=0' build/.config
+              grep -qx 'CONFIG_AUTOBOOT_KEYED=y' build/.config
+              grep -qx 'CONFIG_AUTOBOOT_STOP_STR="!"' build/.config
+              grep -qx 'CONFIG_BOOTCOMMAND="if bootnuttx 0; then true; else fastboot usb 0; fi"' build/.config
+            else
+              ! grep -q '^CONFIG_NBOOT_FASTBOOT=' build/.config
+              grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx 0"' build/.config
+            fi
           else
             ! grep -q '^CONFIG_TARGET_KICKPI_K7_RK3576=' build/.config
             ! grep -q '^CONFIG_LINUX_KERNEL_IMAGE_HEADER=y$' build/.config
@@ -84,6 +104,15 @@ jobs:
             aarch64-linux-gnu-nm -n build/u-boot |
               grep -q '^0000000040200000 T _start$'
             strings build/u-boot-nodtb.bin | grep -q 'N - Boot'
+            if [[ "${{ matrix.recovery }}" == "true" ]]; then
+              strings build/u-boot-nodtb.bin | grep -qx 'stage'
+              strings build/u-boot-nodtb.bin |
+                grep -q 'partition is not in recovery allowlist'
+              strings build/u-boot-nodtb.bin |
+                grep -q 'advanced mode confirmation required'
+              strings build/u-boot-nodtb.bin |
+                grep -q 'N-Boot image verified after write'
+            fi
             python3 - <<'PY'
           import pathlib
           import struct

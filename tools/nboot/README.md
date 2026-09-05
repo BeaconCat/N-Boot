@@ -37,3 +37,12 @@ Run the focused tests:
 ```sh
 python3 -m unittest tools/nboot/test_bootctrl.py
 ```
+
+To enter `N-Boot>` when the full profile uses zero boot delay, run the serial
+sender while resetting the board:
+
+```sh
+python3 tools/nboot/request_recovery.py --port /dev/ttyUSB0
+```
+
+The sender repeats the single-byte `!` stop token across the reset boundary.
