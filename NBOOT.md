@@ -29,7 +29,9 @@ are external Rockchip components and are not relicensed by this repository.
 - atomic persistence of the selected active slot;
 - automatic NuttX startup through `bootnuttx 0`.
 - USB2 Fastboot recovery when no NuttX slot remains bootable;
-- allowlisted, read-back-verified staging of inactive NuttX and AMP slots.
+- allowlisted, read-back-verified staging of NuttX A/B slots;
+- short-lived hardware-RNG confirmation for advanced partition writes;
+- verified, read-back-checked updates of the vendor-compatible N-Boot FIT.
 
 ## Build profiles
 
@@ -62,18 +64,21 @@ The following paths were verified on a 4 GiB KICKPI-K7:
 - a deliberately corrupted A slot is rejected;
 - B boots in the same attempt and remains active after reset;
 - both 4096-byte boot-control copies remain identical after the update.
+- USB Fastboot enumerates as `18d1:d00d`;
+- NuttX slot B can be staged, verified, activated, and booted;
+- a 4 MiB N-Boot FIT can be verified, updated, and booted again.
 
 ## Current limitation
 
-The board-validation FIT occupies 4 MiB because the clean KICKPI-K7 device
-tree does not yet fit beside two independent 2 MiB bootloader candidates.
-NuttX and AMP Linux retain independent A/B partitions, but redundant N-Boot
-payloads require a smaller runtime device tree or a revised vendor-compatible
-layout before being claimed as complete.
+The vendor SPL checks candidates 2 MiB apart, while the interoperable FIT
+layout occupies 4 MiB. N-Boot therefore uses one verified in-place update
+region and does not claim power-loss atomicity for self-update. NuttX retains
+independent A/B partitions. AMP A/B partitions are reserved but AMP flashing
+is outside this change.
 
-Fastboot recovery is compile-tested only. Generic partition flash and erase,
-arbitrary OEM commands, boot-control writes, and N-Boot self-update remain
-disabled until the hardware fault-injection matrix is complete.
+Fastboot erase, arbitrary OEM execution, raw boot-control writes, and direct
+boot or slot commands remain disabled. Advanced generic writes require a
+hardware-RNG challenge and expire after 120 seconds or USB disconnect.
 
 ## Licensing and upstream
 
