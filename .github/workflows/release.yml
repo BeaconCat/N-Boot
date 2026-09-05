@@ -20,6 +20,9 @@ jobs:
             gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev \
             python3-setuptools swig
       - name: Build and verify
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           make O=build CROSS_COMPILE=aarch64-linux-gnu- \
             kickpi-k7-rk3576-full_defconfig
@@ -28,17 +31,58 @@ jobs:
           cp build/u-boot-nodtb.bin nboot-kickpi-k7.bin
           cp build/u-boot.dtb nboot-kickpi-k7.dtb
           python3 - <<'PY'
-          import pathlib, struct
+          import hashlib, json, os, pathlib, struct
           data = pathlib.Path("nboot-kickpi-k7.bin").read_bytes()[:64]
           assert data[56:60] == b"ARMd"
           assert struct.unpack_from("<Q", data, 8)[0] == 0x200000
           assert pathlib.Path("nboot-kickpi-k7.dtb").read_bytes()[:4] == bytes.fromhex("d00dfeed")
+
+          def artifact(path):
+              data = pathlib.Path(path).read_bytes()
+              return {
+                  "name": path,
+                  "size": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              }
+
+          manifest = {
+              "schema": 1,
+              "tag": os.environ["RELEASE_TAG"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "source_sha": os.environ["SOURCE_SHA"],
+              "target": "kickpi-k7-rk3576",
+              "contract": {
+                  "load_address": "0x40200000",
+                  "text_offset": "0x200000",
+                  "vendor_fit_size": 4194304,
+                  "layout_version": 1,
+              },
+              "artifacts": {
+                  "proper": artifact("nboot-kickpi-k7.bin"),
+                  "dtb": artifact("nboot-kickpi-k7.dtb"),
+              },
+          }
+          pathlib.Path("nboot-release.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
           PY
-          sha256sum nboot-kickpi-k7.bin nboot-kickpi-k7.dtb > SHA256SUMS
+          sha256sum nboot-kickpi-k7.bin nboot-kickpi-k7.dtb \
+            nboot-release.json > SHA256SUMS
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             nboot-kickpi-k7.bin nboot-kickpi-k7.dtb SHA256SUMS \
+            nboot-release.json \
             --clobber
+
+      - name: Notify the team repository
+        if: ${{ secrets.TEAM_REPO_DISPATCH_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.TEAM_REPO_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh api repos/open-vela/contest2026_062_PharosTech/dispatches \
+            --method POST \
+            --field event_type=nboot-release \
+            --field "client_payload[tag]=$RELEASE_TAG"
