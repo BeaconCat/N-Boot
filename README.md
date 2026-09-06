@@ -155,6 +155,18 @@ KICKPI-K7的full profile使用零秒自动启动，不显示等待倒计时。�
 | USB VID:PID | `18d1:d00d` |
 | Fastboot设备 | 板上承担gadget功能的OTG/Device数据口，不是只供电口 |
 
+### 按 Recovery 进入 Fastboot
+
+最直接的方法是按住板载`RECOVERY`键再上电或复位，并保持到串口出现
+`N-Boot: recovery key pressed, entering Fastboot`。N-Boot读取`SARADC_IN1`
+低电平后停止自动启动，并在full profile中自动运行USB Fastboot；minimal profile
+不含Fastboot，因此停在`N-Boot>`。不要混用旁边的`MASKROM`键，后者由BootROM
+处理。
+
+Fastboot协议是主机驱动的同步服务，U-Boot在前台处理USB gadget事件，而不是与
+命令行并行运行。Recovery Fastboot在线时，从串口按任意键即可退出服务并回到
+`N-Boot>`；`bootdelay=-1`保证退出后不会继续启动NuttX。
+
 ### 冷启动或复位时进入控制台
 
 由于`CONFIG_BOOTDELAY=0`，不能等看到提示后再按键。先让主机在复位窗口内持续向
@@ -182,6 +194,9 @@ NuttX/openvela可向PMU1 GRF `OS_REG12`写入一个32-bit一次性请求，再�
 
 槽请求只影响本次启动，不修改`active_slot`。Fastboot请求仅在full profile中直接
 进入Fastboot；minimal profile会退化为停在控制台。
+
+物理Recovery键、系统Fastboot请求以及两个NuttX槽均不可启动，都会进入同一个
+Fastboot恢复服务。串口`!`和系统Console请求是明确的维护入口，只进入命令行。
 
 ### 进入 Fastboot
 

@@ -32,7 +32,6 @@ CONFIG_CMD_HASH=y
 # CONFIG_OF_UPSTREAM is not set
 CONFIG_OF_SPL_REMOVE_PROPS="clock-names interrupt-parent assigned-clocks assigned-clock-rates assigned-clock-parents"
 CONFIG_NO_NET=y
-# CONFIG_ADC is not set
 CONFIG_ROCKCHIP_GPIO=y
 CONFIG_SUPPORT_EMMC_RPMB=y
 CONFIG_MMC_DW=y
