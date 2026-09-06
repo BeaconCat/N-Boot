@@ -32,6 +32,8 @@ are external Rockchip components and are not relicensed by this repository.
 - allowlisted, read-back-verified staging of NuttX A/B slots;
 - short-lived hardware-RNG confirmation for advanced partition writes;
 - verified, read-back-checked updates of the vendor-compatible N-Boot FIT.
+- one-shot warm-reset requests and a versioned NuttX handoff record in PMU1
+  GRF scratch registers.
 
 ## Build profiles
 
@@ -79,6 +81,38 @@ is outside this change.
 Fastboot erase, arbitrary OEM execution, raw boot-control writes, and direct
 boot or slot commands remain disabled. Advanced generic writes require a
 hardware-RNG challenge and expire after 120 seconds or USB disconnect.
+
+## System boot contract
+
+KICKPI-K7 PMU1 GRF OS registers retain values across a warm reset and are
+cleared by an `npor` reset. N-Boot reserves OS_REG12 through OS_REG15:
+
+| Address | Direction | Meaning |
+|---|---|---|
+| `0x26026230` | OS to N-Boot | One-shot reboot request |
+| `0x26026234` | N-Boot to OS | Handoff header |
+| `0x26026238` | N-Boot to OS | bootctrl generation bits 31:0 |
+| `0x2602623c` | N-Boot to OS | bootctrl generation bits 63:32 |
+
+The OS writes `0x4e425200 | target` before a warm reset. Supported targets are
+`1=console`, `2=Fastboot`, `3=NuttX A`, and `4=NuttX B`. N-Boot reads and
+clears the request before acting. Invalid magic or target values are ignored.
+Slot requests affect one boot only and do not change `active_slot`.
+
+Before branching to a verified NuttX image, N-Boot writes the generation words
+and then publishes the header last:
+
+```text
+bits 31:16  magic 0x4e48
+bits 15:12  handoff version (1)
+bits 11:8   reason: 0=normal, 1=requested slot, 2=fallback
+bits 7:0    slot: 0=A, 1=B
+```
+
+N-Boot clears an old handoff header at the start of every boot. A system-side
+reader must validate magic and version before using the slot or generation.
+The handoff allows a later `nbootctl` service to identify the running slot and
+mark it successful without guessing from partition priority.
 
 ## Licensing and upstream
 
