@@ -13,7 +13,6 @@
 #include <fb_nand.h>
 #include <fb_spi_flash.h>
 #include <part.h>
-#include <nboot_recovery.h>
 
 #if IS_ENABLED(CONFIG_NBOOT_FASTBOOT)
 static void flash(char *cmd_parameter, char *response);
@@ -157,28 +156,26 @@ int fastboot_handle_command(char *cmd_string, char *response)
 
 #if IS_ENABLED(CONFIG_NBOOT_FASTBOOT)
 	if (!strcmp(cmd_string, "flash")) {
-		if (!nboot_recovery_authorized() || !cmd_parameter ||
-		    strlen(cmd_parameter) > 48) {
-			fastboot_fail("advanced mode confirmation required", response);
+		if (!cmd_parameter || strlen(cmd_parameter) > 48) {
+			fastboot_fail("invalid partition name", response);
 			return -1;
+		}
+		if (!strcmp(cmd_parameter, "nuttx_a") ||
+		    !strcmp(cmd_parameter, "nuttx_b")) {
+			fastboot_oem_board(!strcmp(cmd_parameter, "nuttx_a") ?
+					   "flash:nuttx_a" : "flash:nuttx_b",
+					   (void *)fastboot_buf_addr,
+					   image_size, response);
+			return FASTBOOT_COMMAND_FLASH;
 		}
 		if (!strcmp(cmd_parameter, "nboot")) {
 			fastboot_oem_board("flash:nboot",
 					   (void *)fastboot_buf_addr,
 					   image_size, response);
-		} else if (!strcmp(cmd_parameter, "uboot") ||
-			   !strcmp(cmd_parameter, "trust") ||
-			   !strcmp(cmd_parameter, "bootctrl")) {
-			fastboot_fail("protected partition; use verified OEM flow",
-				      response);
 		} else {
 			flash(cmd_parameter, response);
 		}
 		return FASTBOOT_COMMAND_FLASH;
-	}
-	if (!strcmp(cmd_string, "erase")) {
-		fastboot_fail("erase is disabled; use a complete image", response);
-		return -1;
 	}
 	if (!strcmp(cmd_string, "boot") || !strcmp(cmd_string, "set_active")) {
 		fastboot_fail("use verified board:activate:<slot>", response);

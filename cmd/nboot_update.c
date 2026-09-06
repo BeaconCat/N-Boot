@@ -16,7 +16,6 @@
 #include <linux/libfdt.h>
 #include <linux/string.h>
 #include <malloc.h>
-#include <nboot_recovery.h>
 #include <nboot_storage.h>
 #include <nboot_update.h>
 #include <part.h>
@@ -327,8 +326,6 @@ int nboot_update(const void *fit, u32 size)
 	void *verify_buffer;
 	int ret;
 
-	if (!nboot_recovery_authorized())
-		return -EPERM;
 	ret = nboot_update_validate(fit, size);
 	if (ret)
 		return ret;

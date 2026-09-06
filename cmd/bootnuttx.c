@@ -11,7 +11,6 @@
 #include <malloc.h>
 #include <mapmem.h>
 #include <nboot_contract.h>
-#include <nboot_recovery.h>
 #include <nboot_storage.h>
 #include <nboot_update.h>
 #include <part.h>
@@ -476,8 +475,6 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 		fastboot_okay(nboot_storage_target_name(), response);
 		return;
 	}
-	if (nboot_recovery_unlock(parameter, response))
-		return;
 	if (!strcmp(parameter, "flash:nboot")) {
 		ret = nboot_update(data, size);
 		if (ret)
@@ -522,11 +519,6 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 	domain = &records[selected].domains[i / 2];
 	slot = &domain->slots[i % 2];
 	if (flash) {
-		if (k7_bootctrl_choose(domain) == i % 2 &&
-		    !nboot_recovery_authorized()) {
-			ret = -EBUSY;
-			goto out;
-		}
 		ret = k7_recovery_flash(desc, &control, &part, records,
 					selected, slot, data, size);
 	} else {

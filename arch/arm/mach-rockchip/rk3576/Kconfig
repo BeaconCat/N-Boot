@@ -14,8 +14,8 @@ config NBOOT_FASTBOOT
 	select FASTBOOT_OEM_BOARD
 	help
 	  Enable verified NuttX A/B and N-Boot updates. Generic
-	  partition writes require a short-lived two-command confirmation.
-	  Erase and arbitrary command execution stay disabled.
+	  partition writes and erases use the standard Fastboot commands.
+	  Arbitrary command execution stays disabled.
 
 config TARGET_ROC_PC_RK3576
 	bool "Firefly ROC-RK3576-PC"
