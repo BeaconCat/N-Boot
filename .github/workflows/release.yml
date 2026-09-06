@@ -3,6 +3,12 @@ name: Publish N-Boot binaries
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing N-Boot release tag
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -10,8 +16,31 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      TEAM_REPO_DISPATCH_TOKEN: ${{ secrets.TEAM_REPO_DISPATCH_TOKEN }}
     steps:
+      - name: Resolve release tag
+        id: release
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          TAG=${EVENT_TAG:-$INPUT_TAG}
+          if ! [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo "invalid release tag: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Pin release source
+        run: |
+          echo "RELEASE_TAG=${{ steps.release.outputs.tag }}" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -20,9 +49,6 @@ jobs:
             gcc-aarch64-linux-gnu libgnutls28-dev libssl-dev python3-dev \
             python3-setuptools swig
       - name: Build and verify
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          SOURCE_SHA: ${{ github.sha }}
         run: |
           make O=build CROSS_COMPILE=aarch64-linux-gnu- \
             kickpi-k7-rk3576-full_defconfig
@@ -71,16 +97,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "$RELEASE_TAG" \
             nboot-kickpi-k7.bin nboot-kickpi-k7.dtb SHA256SUMS \
             nboot-release.json \
             --clobber
 
       - name: Notify the team repository
-        if: ${{ secrets.TEAM_REPO_DISPATCH_TOKEN != '' }}
+        if: ${{ env.TEAM_REPO_DISPATCH_TOKEN != '' }}
         env:
-          GH_TOKEN: ${{ secrets.TEAM_REPO_DISPATCH_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ env.TEAM_REPO_DISPATCH_TOKEN }}
         run: |
           gh api repos/open-vela/contest2026_062_PharosTech/dispatches \
             --method POST \
