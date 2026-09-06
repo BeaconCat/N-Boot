@@ -1992,6 +1992,7 @@ F:	*/
 KICKPI-K7 N-BOOT SUPPORT
 M:	BeaconCat <2262965540@qq.com>
 S:	Maintained
+F:	arch/arm/mach-rockchip/rk3576/nboot_contract.c
 F:	cmd/bootnuttx.c
 F:	cmd/nboot_*.c
 F:	include/nboot_*.h
