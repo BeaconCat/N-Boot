@@ -7,3 +7,4 @@
 obj-y += rk3576.o
 obj-y += clk_rk3576.o
 obj-y += syscon_rk3576.o
+obj-$(CONFIG_TARGET_KICKPI_K7_RK3576) += nboot_contract.o

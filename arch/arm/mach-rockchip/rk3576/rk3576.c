@@ -7,6 +7,7 @@
 
 #include <dm.h>
 #include <misc.h>
+#include <nboot_contract.h>
 #include <asm/armv8/mmu.h>
 #include <asm/arch-rockchip/bootrom.h>
 #include <asm/io.h>
@@ -117,10 +118,15 @@ static void nboot_usb_recovery_init(void)
 	writel(0x05, USB2PHY0_GRF_BASE + USB2PHY_GRF_SEQ_LIMIT);
 	writel(0x00010001, USB2PHY0_GRF_BASE + USB2PHY_GRF_DBG_CON);
 }
+#endif
 
+#if CONFIG_IS_ENABLED(TARGET_KICKPI_K7_RK3576)
 int rk_board_late_init(void)
 {
+#if CONFIG_IS_ENABLED(NBOOT_FASTBOOT)
 	nboot_usb_recovery_init();
+#endif
+	nboot_contract_init();
 	return 0;
 }
 #endif
