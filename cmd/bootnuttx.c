@@ -10,9 +10,9 @@
 #include <hash.h>
 #include <malloc.h>
 #include <mapmem.h>
-#include <mmc.h>
 #include <nboot_contract.h>
 #include <nboot_recovery.h>
+#include <nboot_storage.h>
 #include <nboot_update.h>
 #include <part.h>
 #include <u-boot/crc.h>
@@ -229,25 +229,31 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 	struct disk_partition bootctrl;
 	struct disk_partition image;
 	struct k7_domain_disk *domain;
+	struct nboot_storage storage;
 	struct blk_desc *desc;
-	struct mmc *mmc;
 	int selected;
 	int requested;
-	int devnum = 0;
+	int devnum;
 	int attempt;
 	int ret;
 
 	if (argc > 2)
 		return CMD_RET_USAGE;
-	if (argc == 2)
+	if (argc == 2) {
 		devnum = dectoul(argv[1], NULL);
-
-	mmc = find_mmc_device(devnum);
-	if (!mmc || mmc_init(mmc)) {
+		ret = nboot_storage_open(devnum, &storage);
+	} else {
+		ret = nboot_storage_open_boot(&storage);
+		devnum = nboot_storage_boot_devnum();
+	}
+	if (ret) {
 		printf("bootnuttx: MMC device %d is unavailable\n", devnum);
 		return CMD_RET_FAILURE;
 	}
-	desc = mmc_get_blk_desc(mmc);
+	desc = storage.desc;
+	printf("bootnuttx: using %s (mmc%d)\n",
+	       storage.medium == NBOOT_MEDIUM_EMMC ? "eMMC" : "SD",
+	       storage.devnum);
 	if (part_get_info_by_name(desc, "bootctrl", &bootctrl) < 0) {
 		printf("bootnuttx: bootctrl partition is missing\n");
 		return CMD_RET_FAILURE;
@@ -313,7 +319,8 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 			else
 				reason = NBOOT_HANDOFF_NORMAL;
 			nboot_contract_write_handoff(
-				chosen, le64_to_cpu(records[selected].generation),
+				storage.medium, chosen,
+				le64_to_cpu(records[selected].generation),
 				reason);
 
 			printf("bootnuttx: booting NuttX slot %c, version %llu\n",
@@ -340,6 +347,7 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 U_BOOT_CMD(bootnuttx, 2, 0, do_bootnuttx,
 	   "boot a verified NuttX A/B slot",
 	   "[mmc-device]\n"
+	   "    - omit mmc-device to select the BootROM medium with fallback\n"
 	   "    - load the selected NuttX slot at 0x40200000 and branch to it");
 
 #if IS_ENABLED(CONFIG_NBOOT_FASTBOOT)
@@ -444,8 +452,8 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 	struct disk_partition control, part;
 	struct k7_domain_disk *domain;
 	struct k7_slot_disk *slot;
+	struct nboot_storage storage;
 	struct blk_desc *desc;
-	struct mmc *mmc;
 	u8 digest[K7_SHA256_SIZE];
 	const char *name;
 	bool flash;
@@ -453,6 +461,19 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 
 	if (!parameter) {
 		fastboot_fail("expected flash:<slot> or activate:<slot>", response);
+		return;
+	}
+	if (!strcmp(parameter, "target:auto") ||
+	    !strcmp(parameter, "target:sd") ||
+	    !strcmp(parameter, "target:emmc")) {
+		enum nboot_boot_medium medium = NBOOT_MEDIUM_UNKNOWN;
+
+		if (!strcmp(parameter, "target:sd"))
+			medium = NBOOT_MEDIUM_SD;
+		else if (!strcmp(parameter, "target:emmc"))
+			medium = NBOOT_MEDIUM_EMMC;
+		nboot_storage_set_target(medium);
+		fastboot_okay(nboot_storage_target_name(), response);
 		return;
 	}
 	if (nboot_recovery_unlock(parameter, response))
@@ -478,12 +499,12 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 		fastboot_fail("partition is not in recovery allowlist", response);
 		return;
 	}
-	mmc = find_mmc_device(0);
-	if (!mmc || mmc_init(mmc)) {
-		fastboot_fail("SD device unavailable", response);
+	ret = nboot_storage_open_boot(&storage);
+	if (ret) {
+		fastboot_fail("boot storage unavailable", response);
 		return;
 	}
-	desc = mmc_get_blk_desc(mmc);
+	desc = storage.desc;
 	if (desc->blksz != K7_BOOTCTRL_BLOCK_SIZE ||
 	    part_get_info_by_name(desc, "bootctrl", &control) < 0 ||
 	    part_get_info_by_name(desc, name, &part) < 0) {

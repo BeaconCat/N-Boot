@@ -58,10 +58,12 @@ int nboot_contract_slot_override(void)
 	return requested_slot;
 }
 
-void nboot_contract_write_handoff(unsigned int slot, u64 generation,
+void nboot_contract_write_handoff(enum nboot_boot_medium medium,
+				  unsigned int slot, u64 generation,
 				  enum nboot_handoff_reason reason)
 {
 	writel(lower_32_bits(generation), NBOOT_CONTRACT_GENERATION_LO_REG);
 	writel(upper_32_bits(generation), NBOOT_CONTRACT_GENERATION_HI_REG);
-	writel(NBOOT_HANDOFF_HEADER(slot, reason), NBOOT_CONTRACT_HANDOFF_REG);
+	writel(NBOOT_HANDOFF_HEADER(medium, slot, reason),
+	       NBOOT_CONTRACT_HANDOFF_REG);
 }
