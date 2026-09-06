@@ -78,10 +78,10 @@ jobs:
               grep -qx 'CONFIG_BOOTDELAY=0' build/.config
               grep -qx 'CONFIG_AUTOBOOT_KEYED=y' build/.config
               grep -qx 'CONFIG_AUTOBOOT_STOP_STR="!"' build/.config
-              grep -qx 'CONFIG_BOOTCOMMAND="if bootnuttx 0; then true; else fastboot usb 0; fi"' build/.config
+              grep -qx 'CONFIG_BOOTCOMMAND="if bootnuttx; then true; else fastboot usb 0; fi"' build/.config
             else
               ! grep -q '^CONFIG_NBOOT_FASTBOOT=' build/.config
-              grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx 0"' build/.config
+              grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx"' build/.config
             fi
           else
             ! grep -q '^CONFIG_TARGET_KICKPI_K7_RK3576=' build/.config
@@ -104,6 +104,8 @@ jobs:
             aarch64-linux-gnu-nm -n build/u-boot |
               grep -q '^0000000040200000 T _start$'
             strings build/u-boot-nodtb.bin | grep -q 'N - Boot'
+            strings build/u-boot-nodtb.bin |
+              grep -q 'bootnuttx: using %s (mmc%d)'
             if [[ "${{ matrix.recovery }}" == "true" ]]; then
               strings build/u-boot-nodtb.bin | grep -qx 'stage'
               strings build/u-boot-nodtb.bin |
