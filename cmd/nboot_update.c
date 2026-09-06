@@ -16,18 +16,14 @@
 #include <linux/libfdt.h>
 #include <linux/string.h>
 #include <malloc.h>
-#include <mmc.h>
 #include <nboot_recovery.h>
+#include <nboot_storage.h>
 #include <nboot_update.h>
 #include <part.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define NBOOT_UPDATE_BLOCK_SIZE       512
 #define NBOOT_UPDATE_FIT_SIZE         (4 * 1024 * 1024)
-#define NBOOT_UPDATE_SECTOR           0x4000
-#define NBOOT_UPDATE_SLOT_BLOCKS      \
-	(NBOOT_UPDATE_FIT_SIZE / NBOOT_UPDATE_BLOCK_SIZE)
 #define NBOOT_UPDATE_LOAD_ADDR        0x40200000UL
 #define NBOOT_UPDATE_TEXT_OFFSET      0x200000ULL
 #define NBOOT_UPDATE_HEADER_SIZE      64
@@ -295,13 +291,13 @@ static int nboot_update_check_layout(struct blk_desc *desc,
 {
 	struct disk_partition bootctrl;
 
-	if (desc->blksz != NBOOT_UPDATE_BLOCK_SIZE ||
+	if (desc->blksz != NBOOT_LAYOUT_BLOCK_SIZE ||
 	    part_get_info_by_name(desc, "uboot", bootloader) < 0 ||
 	    part_get_info_by_name(desc, "bootctrl", &bootctrl) < 0)
 		return -EINVAL;
-	if (bootloader->start != NBOOT_UPDATE_SECTOR ||
-	    bootloader->size != NBOOT_UPDATE_SLOT_BLOCKS ||
-	    bootctrl.start < 0x8000)
+	if (bootloader->start != NBOOT_LAYOUT_UBOOT_START ||
+	    bootloader->size != NBOOT_LAYOUT_UBOOT_BLOCKS ||
+	    bootctrl.start != NBOOT_LAYOUT_BOOTCTRL_START)
 		return -EINVAL;
 
 	return 0;
@@ -310,11 +306,11 @@ static int nboot_update_check_layout(struct blk_desc *desc,
 static int nboot_update_write_slot(struct blk_desc *desc, lbaint_t sector,
 				   const void *source, void *verify)
 {
-	if (blk_dwrite(desc, sector, NBOOT_UPDATE_SLOT_BLOCKS, source) !=
-	    NBOOT_UPDATE_SLOT_BLOCKS)
+	if (blk_dwrite(desc, sector, NBOOT_LAYOUT_UBOOT_BLOCKS, source) !=
+	    NBOOT_LAYOUT_UBOOT_BLOCKS)
 		return -EIO;
-	if (blk_dread(desc, sector, NBOOT_UPDATE_SLOT_BLOCKS, verify) !=
-	    NBOOT_UPDATE_SLOT_BLOCKS)
+	if (blk_dread(desc, sector, NBOOT_LAYOUT_UBOOT_BLOCKS, verify) !=
+	    NBOOT_LAYOUT_UBOOT_BLOCKS)
 		return -EIO;
 	if (memcmp(source, verify, NBOOT_UPDATE_FIT_SIZE))
 		return -EIO;
@@ -325,8 +321,8 @@ static int nboot_update_write_slot(struct blk_desc *desc, lbaint_t sector,
 int nboot_update(const void *fit, u32 size)
 {
 	struct disk_partition bootloader;
+	struct nboot_storage storage;
 	struct blk_desc *desc;
-	struct mmc *mmc;
 	void *write_buffer;
 	void *verify_buffer;
 	int ret;
@@ -337,10 +333,10 @@ int nboot_update(const void *fit, u32 size)
 	if (ret)
 		return ret;
 
-	mmc = find_mmc_device(0);
-	if (!mmc || mmc_init(mmc))
-		return -ENODEV;
-	desc = mmc_get_blk_desc(mmc);
+	ret = nboot_storage_open_boot(&storage);
+	if (ret)
+		return ret;
+	desc = storage.desc;
 	ret = nboot_update_check_layout(desc, &bootloader);
 	if (ret)
 		return ret;

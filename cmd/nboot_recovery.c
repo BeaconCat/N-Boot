@@ -10,6 +10,7 @@
 #include <env.h>
 #include <fastboot.h>
 #include <nboot_recovery.h>
+#include <nboot_storage.h>
 #include <rng.h>
 #include <time.h>
 
@@ -54,6 +55,7 @@ static bool nboot_recovery_match(const char *parameter)
 
 void nboot_recovery_reset(void)
 {
+	nboot_storage_reset_target();
 	env_set("fastboot.nboot-challenge", NULL);
 	memset(challenge, 0, sizeof(challenge));
 	challenge_start = 0;
