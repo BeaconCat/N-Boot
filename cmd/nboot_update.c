@@ -204,6 +204,10 @@ static int nboot_update_check_configuration(const void *fit)
 	if (configuration < 0)
 		return -ENOENT;
 
+	property = fdt_getprop(fit, configuration, FIT_DESC_PROP, &length);
+	if (!property ||
+	    !nboot_update_string_equal(property, length, "rk3576-evb"))
+		return -EINVAL;
 	property = fdt_getprop(fit, configuration, FIT_FIRMWARE_PROP, &length);
 	if (!property || !nboot_update_string_equal(property, length, "atf-1"))
 		return -EINVAL;
