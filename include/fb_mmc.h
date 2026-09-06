@@ -6,8 +6,12 @@
 #ifndef _FB_MMC_H_
 #define _FB_MMC_H_
 
+#include <linux/types.h>
+
 struct blk_desc;
 struct disk_partition;
+
+int fastboot_mmc_get_devnum(void);
 
 /**
  * fastboot_mmc_get_part_info() - Lookup eMMC partion by name
