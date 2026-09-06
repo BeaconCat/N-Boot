@@ -11,6 +11,7 @@
 #include <malloc.h>
 #include <mapmem.h>
 #include <mmc.h>
+#include <nboot_contract.h>
 #include <nboot_recovery.h>
 #include <nboot_update.h>
 #include <part.h>
@@ -113,6 +114,12 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 	return 0;
 }
 
+static bool k7_bootctrl_slot_bootable(const struct k7_slot_disk *slot)
+{
+	return slot->priority &&
+	       (slot->successful || slot->tries_remaining);
+}
+
 static int k7_bootctrl_choose(const struct k7_domain_disk *domain)
 {
 	int active = domain->active_slot;
@@ -122,9 +129,7 @@ static int k7_bootctrl_choose(const struct k7_domain_disk *domain)
 	for (index = 0; index < 2; index++) {
 		const struct k7_slot_disk *slot = &domain->slots[index];
 
-		if (!slot->priority)
-			continue;
-		if (!slot->successful && !slot->tries_remaining)
+		if (!k7_bootctrl_slot_bootable(slot))
 			continue;
 		if (best < 0 || slot->priority > domain->slots[best].priority ||
 		    (slot->priority == domain->slots[best].priority &&
@@ -227,6 +232,7 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 	struct blk_desc *desc;
 	struct mmc *mmc;
 	int selected;
+	int requested;
 	int devnum = 0;
 	int attempt;
 	int ret;
@@ -258,19 +264,29 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 		free(records);
 		return CMD_RET_FAILURE;
 	}
+	requested = nboot_contract_slot_override();
 
 	for (attempt = 0; attempt < 2; attempt++) {
 		bool metadata_dirty;
+		bool requested_attempt = false;
 		int chosen;
 		struct k7_slot_disk *slot;
 
 		domain = &records[selected].domains[K7_NUTTX_DOMAIN];
-		chosen = k7_bootctrl_choose(domain);
+		if (!attempt && requested >= 0 && requested < 2 &&
+		    k7_bootctrl_slot_bootable(&domain->slots[requested])) {
+			chosen = requested;
+			requested_attempt = true;
+		} else {
+			chosen = k7_bootctrl_choose(domain);
+		}
 		if (chosen < 0)
 			break;
 		slot = &domain->slots[chosen];
-		metadata_dirty = domain->active_slot != chosen;
-		domain->active_slot = chosen;
+		metadata_dirty = !requested_attempt &&
+				 domain->active_slot != chosen;
+		if (!requested_attempt)
+			domain->active_slot = chosen;
 
 		if (!slot->successful) {
 			slot->tries_remaining--;
@@ -288,6 +304,17 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 			ret = k7_nuttx_load(desc, &image, slot);
 		if (!ret) {
 			void (*entry)(void) = (void *)K7_NUTTX_LOAD_ADDR;
+			enum nboot_handoff_reason reason;
+
+			if (requested_attempt)
+				reason = NBOOT_HANDOFF_REQUESTED_SLOT;
+			else if (attempt)
+				reason = NBOOT_HANDOFF_FALLBACK;
+			else
+				reason = NBOOT_HANDOFF_NORMAL;
+			nboot_contract_write_handoff(
+				chosen, le64_to_cpu(records[selected].generation),
+				reason);
 
 			printf("bootnuttx: booting NuttX slot %c, version %llu\n",
 			       'a' + chosen, le64_to_cpu(slot->image_version));
