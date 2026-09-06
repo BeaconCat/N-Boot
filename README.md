@@ -71,6 +71,7 @@ flowchart TD
 | 自动启动 | 倒计时后执行`bootnuttx 0` | 实机通过 |
 | USB Fastboot救援 | USB gadget、自动故障进入与受控线刷 | 实机通过 |
 | NuttX A/B OTA | 独立槽、回读校验与显式激活 | 实机通过 |
+| 系统启动契约 | warm-reset请求、当前槽与generation交接 | 编译通过 |
 
 ## A/B元数据模型
 
