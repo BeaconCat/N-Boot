@@ -142,20 +142,75 @@ bootnuttx: booting NuttX slot b, version 1
 | bootctrl副本 | 4096字节逐字节一致 |
 | B运行态 | NSH与ADB在线 |
 
-## 构建
+## 进入 N-Boot 与恢复模式
 
-## Fastboot恢复与线刷
+KICKPI-K7的full profile使用零秒自动启动，不显示等待倒计时。串口和USB使用以下
+参数：
 
-full profile在NuttX没有可启动槽时自动进入USB2 Fastboot。也可以从N-Boot
-控制台运行：
+| 接口 | 参数 |
+|---|---|
+| 调试串口 | UART0，1500000 baud，8N1，无硬件流控 |
+| 交互提示符 | `N-Boot>` |
+| USB恢复协议 | Android Fastboot over USB 2.0 gadget |
+| USB VID:PID | `18d1:d00d` |
+| Fastboot设备 | 板上承担gadget功能的OTG/Device数据口，不是只供电口 |
+
+### 冷启动或复位时进入控制台
+
+由于`CONFIG_BOOTDELAY=0`，不能等看到提示后再按键。先让主机在复位窗口内持续向
+串口发送单字节ASCII `!`，再给板子复位或上电：
+
+```sh
+python3 -m pip install pyserial
+python3 tools/nboot/request_recovery.py --port COM14
+```
+
+脚本默认以1500000 baud连续发送3秒；端口不是COM14时替换为实际端口。也可使用
+任意串口工具从复位前开始持续发送`!`。命中后自动启动停止并出现`N-Boot>`。
+
+### 从运行中的系统请求下一次启动目标
+
+NuttX/openvela可向PMU1 GRF `OS_REG12`写入一个32-bit一次性请求，再执行保留该
+寄存器的warm reset。N-Boot读取后立即清零；断电或`npor`会丢失请求。
+
+| 地址 | 写入值 | 下一次启动行为 |
+|---|---:|---|
+| `0x26026230` | `0x4e425201` | 停在`N-Boot>`控制台 |
+| `0x26026230` | `0x4e425202` | 直接进入USB Fastboot |
+| `0x26026230` | `0x4e425203` | 本次强制尝试NuttX A槽 |
+| `0x26026230` | `0x4e425204` | 本次强制尝试NuttX B槽 |
+
+槽请求只影响本次启动，不修改`active_slot`。Fastboot请求仅在full profile中直接
+进入Fastboot；minimal profile会退化为停在控制台。
+
+### 进入 Fastboot
+
+full profile在两个NuttX槽都不可启动时自动进入USB Fastboot。已经进入
+`N-Boot>`时可手动运行：
 
 ```text
 fastboot usb 0
 ```
 
-full profile默认零秒启动。需要进入交互式`N-Boot>`时，在复位期间持续发送单字节
-`!`，或运行`tools/nboot/request_recovery.py --port <serial>`；该入口不依赖可见
-倒计时。
+主机安装Android platform-tools并连接USB数据口后，应先确认设备身份：
+
+```sh
+fastboot devices
+fastboot getvar version
+fastboot getvar nboot-medium
+```
+
+`nboot-medium`返回本次写入目标`sd`或`emmc`。自动模式固定选择有效SD布局，未插
+SD或SD布局无效时选择eMMC；需要修复另一介质时必须在写入前显式切换：
+
+```sh
+fastboot oem board:target:auto
+fastboot oem board:target:sd
+fastboot oem board:target:emmc
+fastboot getvar nboot-medium
+```
+
+切换目标本身不写盘，并在USB断开后恢复auto。
 
 日常NuttX恢复不需要解锁高级模式：
 
@@ -187,6 +242,8 @@ DTB及分区布局后写入，并进行全分区回读比较。
 > [!WARNING]
 > Fastboot已在KICKPI-K7实测枚举为`18d1:d00d`，NuttX B槽写入、回读、激活、
 > 重启以及N-Boot本体4 MiB原位更新均已通过。N-Boot写入过程中仍禁止断电。
+
+## 构建
 
 ### minimal恢复profile
 
