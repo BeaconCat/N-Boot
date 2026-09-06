@@ -27,7 +27,7 @@ are external Rockchip components and are not relicensed by this repository.
 - verified NuttX loading at `0x40200000`;
 - automatic rejection of a damaged slot and same-boot fallback;
 - atomic persistence of the selected active slot;
-- automatic NuttX startup through `bootnuttx 0`.
+- automatic NuttX startup from the BootROM-selected SD or eMMC medium.
 - USB2 Fastboot recovery when no NuttX slot remains bootable;
 - allowlisted, read-back-verified staging of NuttX A/B slots;
 - short-lived hardware-RNG confirmation for advanced partition writes;
@@ -90,7 +90,7 @@ cleared by an `npor` reset. N-Boot reserves OS_REG12 through OS_REG15:
 | Address | Direction | Meaning |
 |---|---|---|
 | `0x26026230` | OS to N-Boot | One-shot reboot request |
-| `0x26026234` | N-Boot to OS | Handoff header |
+| `0x26026234` | N-Boot to OS | Handoff header with medium and slot |
 | `0x26026238` | N-Boot to OS | bootctrl generation bits 31:0 |
 | `0x2602623c` | N-Boot to OS | bootctrl generation bits 63:32 |
 
@@ -104,15 +104,39 @@ and then publishes the header last:
 
 ```text
 bits 31:16  magic 0x4e48
-bits 15:12  handoff version (1)
+bits 15:12  handoff version (2)
 bits 11:8   reason: 0=normal, 1=requested slot, 2=fallback
-bits 7:0    slot: 0=A, 1=B
+bits 7:4    medium: 1=SD, 2=eMMC
+bits 3:0    slot: 0=A, 1=B
 ```
 
 N-Boot clears an old handoff header at the start of every boot. A system-side
 reader must validate magic and version before using the slot or generation.
 The handoff allows a later `nbootctl` service to identify the running slot and
 mark it successful without guessing from partition priority.
+
+## SD and eMMC selection
+
+The same GPT layout is supported on SD (`mmc0`) and eMMC (`mmc1`). N-Boot
+selects a valid SD layout first, then eMMC. This allows a recovery SD card to
+repair eMMC and an eMMC installation to boot when the SD card is absent or
+damaged, without reading the BootROM SRAM source field from U-Boot proper.
+
+Automatic fallback requires exact `uboot`, `trust`, `bootctrl`, `nuttx_a` and
+`nuttx_b` starts and sizes, so an unrelated partition table is not selected by
+accident. Fastboot defaults to the selected boot medium. A recovery operator
+can choose a destination for the current USB session:
+
+```text
+fastboot oem board:target:auto
+fastboot oem board:target:sd
+fastboot oem board:target:emmc
+fastboot getvar nboot-medium
+```
+
+Changing the Fastboot target does not write media and resets on USB disconnect.
+Normal authorization and protected-partition rules still apply to subsequent
+writes.
 
 ## Licensing and upstream
 

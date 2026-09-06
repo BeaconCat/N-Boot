@@ -68,10 +68,11 @@ flowchart TD
 | 原子元数据更新 | 先写旧副本、回读、再写另一副本 | 实机通过 |
 | 损坏槽自动回退 | 同一启动周期拒绝A并启动B | 实机通过 |
 | active槽持久化 | 仅状态变化时写盘，稳定启动不磨损 | 实机通过 |
-| 自动启动 | 倒计时后执行`bootnuttx 0` | 实机通过 |
+| 自动启动 | 有效SD优先，否则从eMMC执行`bootnuttx` | SD实机通过 |
 | USB Fastboot救援 | USB gadget、自动故障进入与受控线刷 | 实机通过 |
 | NuttX A/B OTA | 独立槽、回读校验与显式激活 | 实机通过 |
 | 系统启动契约 | warm-reset请求、当前槽与generation交接 | 编译通过 |
+| SD/eMMC双介质 | SD优先、跨介质恢复、Fastboot目标选择 | 编译通过 |
 
 ## A/B元数据模型
 
@@ -207,7 +208,7 @@ make CROSS_COMPILE=aarch64-linux-gnu- -j4 u-boot-nodtb.bin u-boot.dtb
 CONFIG_TEXT_BASE=0x40200000
 CONFIG_LINUX_KERNEL_IMAGE_HEADER=y
 CONFIG_LNX_KRNL_IMG_TEXT_OFFSET_BASE=0x40000000
-CONFIG_BOOTCOMMAND="if bootnuttx 0; then true; else fastboot usb 0; fi"
+CONFIG_BOOTCOMMAND="if bootnuttx; then true; else fastboot usb 0; fi"
 ```
 
 > [!NOTE]
