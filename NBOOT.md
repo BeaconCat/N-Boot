@@ -30,7 +30,7 @@ are external Rockchip components and are not relicensed by this repository.
 - automatic NuttX startup from the BootROM-selected SD or eMMC medium.
 - USB2 Fastboot recovery when no NuttX slot remains bootable;
 - allowlisted, read-back-verified staging of NuttX A/B slots;
-- short-lived hardware-RNG confirmation for advanced partition writes;
+- standard Fastboot partition writes and erases without an unlock challenge;
 - verified, read-back-checked updates of the vendor-compatible N-Boot FIT.
 - one-shot warm-reset requests and a versioned NuttX handoff record in PMU1
   GRF scratch registers.
@@ -78,9 +78,11 @@ region and does not claim power-loss atomicity for self-update. NuttX retains
 independent A/B partitions. AMP A/B partitions are reserved but AMP flashing
 is outside this change.
 
-Fastboot erase, arbitrary OEM execution, raw boot-control writes, and direct
-boot or slot commands remain disabled. Advanced generic writes require a
-hardware-RNG challenge and expire after 120 seconds or USB disconnect.
+Standard Fastboot writes and erases are unrestricted for GPT-named partitions.
+`fastboot flash nuttx_a|nuttx_b <image>` uses the invalidate-before-write,
+media read-back, SHA-256, and bootctrl metadata update path so the resulting
+slot remains bootable. Direct `boot`, `set_active`, arbitrary OEM execution,
+and UUU commands remain disabled.
 
 ## System boot contract
 
@@ -135,8 +137,7 @@ fastboot getvar nboot-medium
 ```
 
 Changing the Fastboot target does not write media and resets on USB disconnect.
-Normal authorization and protected-partition rules still apply to subsequent
-writes.
+Subsequent standard Fastboot writes and erases do not require authorization.
 
 ## Licensing and upstream
 

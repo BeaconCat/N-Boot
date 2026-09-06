@@ -230,29 +230,26 @@ fastboot getvar nboot-medium
 日常NuttX恢复不需要解锁高级模式：
 
 ```sh
-fastboot stage nuttx.bin
-fastboot oem board:flash:nuttx_b
+fastboot flash nuttx_b nuttx.bin
 fastboot oem board:activate:nuttx_b
 fastboot reboot
 ```
 
-允许的受控目标仅为`nuttx_a`和`nuttx_b`。写入当前可启动槽会被拒绝；目标槽在
-payload写入前先失效，写完从介质读回验证，且刷写和激活为两个独立操作。
+`fastboot flash nuttx_a|nuttx_b`直接复用A/B写入路径。目标槽
+在payload写入前先失效，写完从介质读回并校验SHA-256；刷写和激活仍是两个独立
+操作。原有`stage`加`oem board:flash:<slot>`命令继续兼容自动化脚本。
 
-高级通用分区写入与N-Boot本体更新必须先完成短时随机挑战：
+所有GPT命名分区均允许使用标准Fastboot直接写入或擦除，不再需要随机挑战：
 
 ```sh
-fastboot oem board:unlock-request
-fastboot getvar nboot-challenge
-fastboot oem board:unlock-confirm:<challenge>
-fastboot flash nboot nboot.img
-fastboot oem board:lock
+fastboot flash uboot nboot.img
+fastboot flash trust recovery-trust.img
+fastboot erase nuttx_b
 ```
 
-授权在120秒后、USB断开后或显式`lock`后失效。`erase`、`boot`、`set_active`、
-`oem run`和UUU保持禁用；`uboot`、`trust`与`bootctrl`禁止走通用写入。N-Boot
-本体只接受vendor兼容的4 MiB FIT，完整验证六段SHA-256、ARM64 header、内嵌K7
-DTB及分区布局后写入，并进行全分区回读比较。
+`fastboot flash nboot nboot-update.img`别名仍会校验vendor兼容的4 MiB FIT并回读比较；
+直接写`uboot`分区则绕过该格式校验。`boot`、`set_active`、`oem run`和UUU仍未
+作为N-Boot产品命令开放。刷写错误可通过RKDevTool恢复。
 
 > [!WARNING]
 > Fastboot已在KICKPI-K7实测枚举为`18d1:d00d`，NuttX B槽写入、回读、激活、
@@ -313,7 +310,7 @@ vendor SPL的固定候选间距为2 MiB，但可启动FIT必须保留vendor的4 
 - [x] active槽持久化与自动启动
 - [x] USB Fastboot枚举与受控A/B线刷
 - [x] 双槽均失效时自动进入恢复模式
-- [x] 二次确认后的高级通用分区写入
+- [x] 标准Fastboot通用分区写入与擦除
 - [x] 校验后N-Boot本体更新
 - [ ] NuttX/AMP Linux统一OTA manifest
 - [ ] 签名验证与anti-rollback
