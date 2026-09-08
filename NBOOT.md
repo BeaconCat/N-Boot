@@ -72,6 +72,13 @@ The following paths were verified on a 4 GiB KICKPI-K7:
 
 ## Current limitation
 
+Activated NuttX slots remain eligible regardless of the legacy retry count,
+and normal boot does not consume retries. This also
+recovers slots whose retries were exhausted by earlier builds. Each image
+still passes SHA-256 verification before execution; a failed image has its
+priority cleared and falls back to the other slot. An OS hang after a valid
+image starts is not detected by this policy. The on-disk format is unchanged.
+
 The vendor SPL checks candidates 2 MiB apart, while the interoperable FIT
 layout occupies 4 MiB. N-Boot therefore uses one verified in-place update
 region and does not claim power-loss atomicity for self-update. NuttX retains

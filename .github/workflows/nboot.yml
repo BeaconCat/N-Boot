@@ -22,6 +22,7 @@ jobs:
       - name: Run focused tests
         run: |
           python3 tools/nboot/test_bootctrl.py
+          python3 tools/nboot/test_boot_eligibility.py
 
   build:
     name: build ${{ matrix.config }}
