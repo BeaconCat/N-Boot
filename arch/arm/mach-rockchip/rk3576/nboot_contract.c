@@ -6,16 +6,49 @@
  */
 
 #include <adc.h>
+#include <console.h>
 #include <env.h>
 #include <nboot_contract.h>
 #include <asm/io.h>
 #include <linux/kernel.h>
+#include <linux/delay.h>
 
 static int requested_slot = -1;
 
 #define NBOOT_RECOVERY_ADC_DEVICE	"adc@2ae00000"
 #define NBOOT_RECOVERY_ADC_CHANNEL	1
 #define NBOOT_RECOVERY_ADC_THRESHOLD	100
+#define NBOOT_SERIAL_RECOVERY_TOKEN	'!'
+#define NBOOT_SERIAL_RECOVERY_POLLS	10
+#define NBOOT_SERIAL_RECOVERY_POLL_US	10000
+#define NBOOT_SERIAL_RECOVERY_DRAIN_POLLS	5
+
+static bool nboot_serial_recovery_requested(void)
+{
+	unsigned int poll;
+
+	for (poll = 0; poll < NBOOT_SERIAL_RECOVERY_POLLS; poll++) {
+		while (tstc()) {
+			if (getchar() == NBOOT_SERIAL_RECOVERY_TOKEN)
+				return true;
+		}
+
+		udelay(NBOOT_SERIAL_RECOVERY_POLL_US);
+	}
+
+	return false;
+}
+
+static void nboot_serial_recovery_drain(void)
+{
+	unsigned int poll;
+
+	for (poll = 0; poll < NBOOT_SERIAL_RECOVERY_DRAIN_POLLS; poll++) {
+		udelay(NBOOT_SERIAL_RECOVERY_POLL_US);
+		while (tstc())
+			getchar();
+	}
+}
 
 static bool nboot_recovery_key_pressed(void)
 {
@@ -47,6 +80,13 @@ void nboot_contract_init(void)
 	requested_slot = -1;
 	writel(0, NBOOT_CONTRACT_REQUEST_REG);
 	nboot_contract_clear_handoff();
+	if (nboot_serial_recovery_requested()) {
+		puts("N-Boot: serial recovery requested, entering console\n");
+		nboot_serial_recovery_drain();
+		env_set("bootdelay", "-1");
+		return;
+	}
+
 	if (nboot_recovery_key_pressed()) {
 		puts("N-Boot: recovery key pressed, entering Fastboot\n");
 		env_set("bootdelay", "-1");

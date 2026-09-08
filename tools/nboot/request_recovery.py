@@ -18,10 +18,16 @@ def main() -> int:
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.duration
+    observed = bytearray()
     with serial.Serial(args.port, args.baud, timeout=0) as device:
         while time.monotonic() < deadline:
             device.write(b"!")
             device.flush()
+            observed.extend(device.read(4096))
+            if b"serial recovery requested" in observed or b"N-Boot>" in observed:
+                return 0
+            if len(observed) > 8192:
+                del observed[:-4096]
             time.sleep(0.01)
 
     return 0

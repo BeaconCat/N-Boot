@@ -182,6 +182,10 @@ python3 -m pip install pyserial
 python3 tools/nboot/request_recovery.py --port COM14
 ```
 
+N-Boot polls for the `!` token for up to 100 ms immediately before autoboot.
+This board-owned window remains reliable with `bootdelay=0`; the generic
+autoboot key parser otherwise has no useful polling interval.
+
 脚本默认以1500000 baud连续发送3秒；端口不是COM14时替换为实际端口。也可使用
 任意串口工具从复位前开始持续发送`!`。命中后自动启动停止并出现`N-Boot>`。
 
