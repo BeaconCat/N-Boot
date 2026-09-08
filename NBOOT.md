@@ -146,6 +146,19 @@ fastboot getvar nboot-medium
 Changing the Fastboot target does not write media and resets on USB disconnect.
 Subsequent standard Fastboot writes and erases do not require authorization.
 
+## Early initialization
+
+Both K7 configurations defer the full device-model scan until after
+relocation, when caches and the live device tree are available. The early
+board hook binds only `/dmc`, preserving the vendor loader's DRAM size
+discovery without hard-coding the installed memory size. Debug UART handles
+early output; the regular serial driver is initialized after relocation.
+Board information and the OTP model lookup are also printed after relocation.
+
+The configuration and the DMC hook must be kept together: skipping the early
+scan without binding the RAM device prevents `dram_init()` from completing.
+This does not change the SD/eMMC selection policy or enable caches early.
+
 ## Licensing and upstream
 
 N-Boot follows the license of each U-Boot source file. See `Licenses/README`

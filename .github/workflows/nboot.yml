@@ -23,6 +23,7 @@ jobs:
         run: |
           python3 tools/nboot/test_bootctrl.py
           python3 tools/nboot/test_boot_eligibility.py
+          python3 tools/nboot/test_early_dm.py
 
   build:
     name: build ${{ matrix.config }}

@@ -6,11 +6,13 @@
 #define LOG_CATEGORY LOGC_ARCH
 
 #include <dm.h>
+#include <dm/lists.h>
 #include <misc.h>
 #include <nboot_contract.h>
 #include <asm/armv8/mmu.h>
 #include <asm/arch-rockchip/bootrom.h>
 #include <asm/io.h>
+#include <asm/global_data.h>
 #include <linux/hw_bitfield.h>
 
 #define SYS_GRF_BASE		0x2600A000
@@ -239,6 +241,24 @@ int arch_cpu_init(void)
 
 	return 0;
 }
+
+#if defined(CONFIG_TARGET_KICKPI_K7_RK3576) && \
+    defined(CONFIG_SKIP_EARLY_DM) && !defined(CONFIG_XPL_BUILD)
+/* The vendor loader has already trained DRAM. Bind only its size reader
+ * before relocation; the full device tree is scanned with caches enabled.
+ */
+int board_early_init_f(void)
+{
+	DECLARE_GLOBAL_DATA_PTR;
+	struct udevice *dev;
+	ofnode node = ofnode_path("/dmc");
+
+	if (!ofnode_valid(node))
+		return -ENODEV;
+
+	return lists_bind_fdt(gd->dm_root, node, &dev, NULL, true);
+}
+#endif
 
 #define RK3576_OTP_CPU_CODE_OFFSET		0x02
 #define RK3576_OTP_SPECIFICATION_OFFSET		0x08
