@@ -115,8 +115,11 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 
 static bool k7_bootctrl_slot_bootable(const struct k7_slot_disk *slot)
 {
-	return slot->priority &&
-	       (slot->successful || slot->tries_remaining);
+	/* Boot eligibility does not depend on an OS boot-success acknowledgement.
+	 * Keep activated slots eligible, including legacy zero-try metadata.
+	 * Image validation still rejects bad payloads and clears their priority.
+	 */
+	return slot->priority != 0;
 }
 
 static int k7_bootctrl_choose(const struct k7_domain_disk *domain)
@@ -293,10 +296,6 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 		if (!requested_attempt)
 			domain->active_slot = chosen;
 
-		if (!slot->successful) {
-			slot->tries_remaining--;
-			metadata_dirty = true;
-		}
 		if (metadata_dirty) {
 			ret = k7_bootctrl_write(desc, &bootctrl, records,
 						selected);
@@ -530,7 +529,7 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 		}
 		domain->active_slot = i % 2;
 		slot->priority = 15;
-		slot->tries_remaining = 3;
+		slot->tries_remaining = 0;
 		slot->successful = 0;
 		if (domain->slots[1 - i % 2].priority == 15)
 			domain->slots[1 - i % 2].priority = 14;
