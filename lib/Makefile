@@ -5,6 +5,8 @@
 
 ifndef CONFIG_XPL_BUILD
 
+obj-$(CONFIG_CMD_BOOTAMP) += nboot_amp.o
+
 obj-$(CONFIG_EFI_CLIENT) += efi_client/
 obj-$(CONFIG_EFI_LOADER) += efi_driver/
 obj-$(CONFIG_EFI_LOADER) += efi_loader/
