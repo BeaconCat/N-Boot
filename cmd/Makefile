@@ -40,6 +40,7 @@ obj-$(CONFIG_CMD_BOOTSTAGE) += bootstage.o
 obj-$(CONFIG_CMD_BOOTZ) += bootz.o
 obj-$(CONFIG_CMD_BOOTI) += booti.o
 obj-$(CONFIG_CMD_BOOTNUTTX) += bootnuttx.o
+obj-$(CONFIG_CMD_BOOTAMP) += bootamp.o
 obj-$(CONFIG_NBOOT_FASTBOOT) += nboot_recovery.o
 obj-$(CONFIG_NBOOT_FASTBOOT) += nboot_update.o
 obj-$(CONFIG_CMD_BTRFS) += btrfs.o

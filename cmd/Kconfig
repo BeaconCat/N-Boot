@@ -314,6 +314,17 @@ config CMD_BOOTM
 	help
 	  Boot an application image from the memory.
 
+config CMD_BOOTAMP
+	bool "bootamp - experimental K7 four-plus-four AMP boot"
+	depends on TARGET_KICKPI_K7_RK3576 && ARM64 && CMD_BOOTM && OF_LIBFDT && LMB
+	select ARM_PSCI_FW
+	select FIT
+	select SHA256
+	help
+	  Validate and cold-boot the K7 AMP FIT. Requires a matching Linux DTB,
+	  vendor BL31 AMP services and NuttX external GIC ownership support.
+	  This does not activate AMP A/B or replace the normal boot command.
+
 config CMD_BOOTNUTTX
 	bool "bootnuttx"
 	depends on ARM64 && MMC && PARTITIONS && HASH && SHA256
