@@ -51,6 +51,7 @@ enum nboot_boot_medium {
 	 ((slot) & 0xfU))
 
 void nboot_contract_init(void);
+int nboot_bootctrl_take_request(void);
 int nboot_contract_slot_override(void);
 void nboot_contract_write_handoff(enum nboot_boot_medium medium,
 				  unsigned int slot, u64 generation,

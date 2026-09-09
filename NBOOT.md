@@ -32,8 +32,8 @@ are external Rockchip components and are not relicensed by this repository.
 - allowlisted, read-back-verified staging of NuttX A/B slots;
 - standard Fastboot partition writes and erases without an unlock challenge;
 - verified, read-back-checked updates of the vendor-compatible N-Boot FIT.
-- one-shot warm-reset requests and a versioned NuttX handoff record in PMU1
-  GRF scratch registers.
+- persistent one-shot reboot requests and a versioned NuttX handoff record
+  in PMU1 GRF scratch registers.
 
 ## Build profiles
 
@@ -93,20 +93,30 @@ and UUU commands remain disabled.
 
 ## System boot contract
 
-KICKPI-K7 PMU1 GRF OS registers retain values across a warm reset and are
-cleared by an `npor` reset. N-Boot reserves OS_REG12 through OS_REG15:
+N-Boot accepts a persistent one-shot request in the first four padding bytes
+of each CRC-protected bootctrl record (offset 236, little-endian). The writer
+uses the normal redundant-record update, including a new generation and CRC.
+N-Boot clears the request in a new record before acting on it. Normal boots
+without a request do not write metadata.
+
+The request value is `0x4e425200 | target`, with targets `1=console`,
+`2=Fastboot`, `3=NuttX A`, and `4=NuttX B`. An invalid target is consumed and
+ignored. Slot requests affect one boot only and do not change `active_slot`.
+The record format remains version 1; older versions ignore these padding
+bytes, so both N-Boot and the OS utility must support persistent requests.
+
+PMU1 OS_REG12 is still accepted as a legacy request source, but the tested
+vendor reset chain did not preserve it reliably, including with the second
+global software reset. OS_REG13 through OS_REG15 continue to carry the handoff:
 
 | Address | Direction | Meaning |
 |---|---|---|
-| `0x26026230` | OS to N-Boot | One-shot reboot request |
+| `0x26026230` | OS to N-Boot | Legacy one-shot reboot request |
 | `0x26026234` | N-Boot to OS | Handoff header with medium and slot |
 | `0x26026238` | N-Boot to OS | bootctrl generation bits 31:0 |
 | `0x2602623c` | N-Boot to OS | bootctrl generation bits 63:32 |
 
-The OS writes `0x4e425200 | target` before a warm reset. Supported targets are
-`1=console`, `2=Fastboot`, `3=NuttX A`, and `4=NuttX B`. N-Boot reads and
-clears the request before acting. Invalid magic or target values are ignored.
-Slot requests affect one boot only and do not change `active_slot`.
+The persistent request takes precedence over a legacy register request.
 
 Before branching to a verified NuttX image, N-Boot writes the generation words
 and then publishes the header last:

@@ -24,6 +24,7 @@ jobs:
           python3 tools/nboot/test_bootctrl.py
           python3 tools/nboot/test_boot_eligibility.py
           python3 tools/nboot/test_early_dm.py
+          python3 tools/nboot/test_reboot_request.py
 
   build:
     name: build ${{ matrix.config }}
