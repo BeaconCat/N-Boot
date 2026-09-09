@@ -169,6 +169,43 @@ The configuration and the DMC hook must be kept together: skipping the early
 scan without binding the RAM device prevents `dram_init()` from completing.
 This does not change the SD/eMMC selection policy or enable caches early.
 
+## Experimental four-plus-four AMP boot
+
+The K7 full profile provides `bootamp <address> <size> [check]`. Both arguments
+are hexadecimal. `check` validates the ABI2 external-data FIT without loading
+payloads or starting CPUs. The default boot command remains `bootnuttx`.
+
+The FIT contains Linux at 0x42000000, its matching K7 DTB and initramfs, and
+openvela at 0x4a400000. Linux owns A72 MPIDRs 0x100..0x103; openvela owns A53
+MPIDRs 0..3. The Linux DTB must contain only the four A72 CPU nodes. This uses
+Rockchip BL31's nonboot-CPU Linux argument service and PSCI; it is not a generic
+U-Boot boot protocol or a security boundary.
+
+After initializing PSCI, N-Boot prepares the payloads, enables the mailbox
+receiver, starts Linux on 0x100, and waits for GIC setup and the initial RPMsg
+receive-buffer notification. It then enters openvela on the current CPU0.
+Failure after Linux starts resets the entire SoC. Independent peer restart is
+not supported. The matching openvela build needs the shared-GIC adaptation.
+
+With the complete N-Boot vendor FIT already installed, use `fastboot usb 0`,
+then host-side `fastboot stage amp.itb`. Send one ETX over serial to leave
+Fastboot. Its RAM buffer is 0x60000000. Send commands with a single CR, not CRLF:
+
+```text
+bootamp 60000000 <hex-file-size> check
+bootamp 60000000 <hex-file-size>
+```
+
+On 2026-09-10, hardware testing reached four-core openvela NSH and four-core
+Linux, with successful real RPMsg `nyampctl health` and `nyampctl info` calls.
+This does not load AMP A/B slots automatically or validate NPU workloads.
+Repeated LMB reservation warnings for already reserved ranges remain visible
+during bootm preparation; the tested handoff completes despite them.
+
+Never flash this AMP FIT into ordinary NuttX slots, which boot at 0x40200000.
+The bootloader itself still requires the team's complete 4 MiB vendor FIT;
+do not flash the raw U-Boot proper binary into the bootloader partition.
+
 ## Licensing and upstream
 
 N-Boot follows the license of each U-Boot source file. See `Licenses/README`
