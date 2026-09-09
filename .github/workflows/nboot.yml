@@ -26,6 +26,20 @@ jobs:
           python3 tools/nboot/test_early_dm.py
           python3 tools/nboot/test_reboot_request.py
 
+  amp:
+    name: AMP FIT and boot flow
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install AMP test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential device-tree-compiler libssl-dev u-boot-tools
+      - name: Run AMP host tests
+        run: |
+          python3 tools/nboot/test_amp_fit.py .
+          python3 tools/nboot/test_amp_boot.py .
+
   build:
     name: build ${{ matrix.config }}
     runs-on: ubuntu-24.04
