@@ -76,10 +76,15 @@ void nboot_contract_init(void)
 {
 	u32 request = readl(NBOOT_CONTRACT_REQUEST_REG);
 	u32 target;
+	int disk_target = 0;
 
 	requested_slot = -1;
 	writel(0, NBOOT_CONTRACT_REQUEST_REG);
 	nboot_contract_clear_handoff();
+	if (IS_ENABLED(CONFIG_CMD_BOOTNUTTX))
+		disk_target = nboot_bootctrl_take_request();
+	if (disk_target > 0)
+		request = NBOOT_REBOOT_REQUEST(disk_target);
 	if (nboot_serial_recovery_requested()) {
 		puts("N-Boot: serial recovery requested, entering console\n");
 		nboot_serial_recovery_drain();
@@ -99,6 +104,7 @@ void nboot_contract_init(void)
 		return;
 
 	target = request & 0xffU;
+	printf("N-Boot: one-shot request %u\n", target);
 	switch (target) {
 	case NBOOT_REBOOT_CONSOLE:
 		env_set("bootdelay", "-1");

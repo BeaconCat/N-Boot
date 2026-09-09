@@ -180,6 +180,39 @@ static int k7_bootctrl_write(struct blk_desc *desc,
 	return 0;
 }
 
+int nboot_bootctrl_take_request(void)
+{
+	struct k7_bootctrl_disk *records;
+	struct disk_partition control;
+	struct nboot_storage storage;
+	u32 request;
+	int selected, target = 0;
+
+	if (nboot_storage_open_boot(&storage) ||
+	    part_get_info_by_name(storage.desc, "bootctrl", &control) < 0)
+		return 0;
+	records = memalign(ARCH_DMA_MINALIGN, sizeof(*records) * 2);
+	if (!records)
+		return 0;
+	if (k7_bootctrl_read(storage.desc, &control, records, &selected))
+		goto out;
+	memcpy(&request, records[selected].padding, sizeof(request));
+	request = le32_to_cpu(request);
+	if ((request & NBOOT_REBOOT_MAGIC_MASK) != NBOOT_REBOOT_MAGIC)
+		goto out;
+	memset(records[selected].padding, 0, sizeof(request));
+	if (k7_bootctrl_write(storage.desc, &control, records, selected)) {
+		puts("N-Boot: could not consume reboot request\n");
+		goto out;
+	}
+	if ((request & 0xff) >= NBOOT_REBOOT_CONSOLE &&
+	    (request & 0xff) <= NBOOT_REBOOT_SLOT_B)
+		target = request & 0xff;
+out:
+	free(records);
+	return target;
+}
+
 static int k7_nuttx_partition(struct blk_desc *desc, int slot,
 			      struct disk_partition *partition)
 {
