@@ -31,8 +31,7 @@
 
 > [!IMPORTANT]
 > N-Boot 是 U-Boot 的 Pharos Tech downstream，并非从零重写整个 U-Boot。
-> 仓库保留上游历史、版权声明和适用许可证。KICKPI-K7板级支持与NuttX A/B
-> 启动管理采用clean-room方式实现，没有复制Android vendor U-Boot源码。
+> 仓库保留上游历史、版权声明和适用许可证。
 
 ## 为什么需要 N-Boot
 
