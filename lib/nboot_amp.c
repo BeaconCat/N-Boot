@@ -134,21 +134,32 @@ int nboot_amp_validate_fdt(const void *fdt, u32 size)
 	    fdt_node_offset_by_compatible(fdt, amp, "rockchip,amp") >= 0)
 		return -EINVAL;
 	routes = fdt_getprop(fdt, amp, "amp-irqs", &len);
-	if (!routes || len != 12 * sizeof(*routes))
+	if (!routes || len < 12 * sizeof(*routes) ||
+	    len % (6 * sizeof(*routes)) ||
+	    len > NBOOT_AMP_MAX_IRQ_ROUTES * 6 * sizeof(*routes))
 		return -EINVAL;
-	for (i = 0; i < 12; i += 6) {
-		u32 irq = fdt32_to_cpu(routes[i + 1]);
+	for (i = 0; i < len / (6 * sizeof(*routes)); i++) {
+		const fdt32_t *route = &routes[i * 6];
+		u32 irq = fdt32_to_cpu(route[1]);
 
-		if (routes[i] || fdt32_to_cpu(routes[i + 2]) ||
-		    fdt32_to_cpu(routes[i + 3]) != NBOOT_AMP_IRQ_PRIORITY ||
-		    routes[i + 4] || routes[i + 5])
+		if (route[0] || fdt32_to_cpu(route[2]) ||
+		    fdt32_to_cpu(route[3]) != NBOOT_AMP_IRQ_PRIORITY ||
+		    route[4] || route[5])
 			return -EINVAL;
+
+		/* The console and the transport are what this domain cannot run
+		 * without, so both must be present.  Anything else is a
+		 * peripheral it also owns -- audio needs its controller, its bus
+		 * and its DMA channel routed here -- so an extra route is
+		 * accepted as long as it is well formed.  A route is a claim on
+		 * an interrupt the other domain must not touch, which is why the
+		 * ones this firmware depends on are still required rather than
+		 * merely permitted.
+		 */
 		if (irq == NBOOT_AMP_UART_IRQ)
 			found |= 1;
 		else if (irq == NBOOT_AMP_MBOX_IRQ)
 			found |= 2;
-		else
-			return -EINVAL;
 	}
 	if (found != 3)
 		return -EINVAL;

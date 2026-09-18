@@ -13,6 +13,13 @@
 #define NBOOT_AMP_UART_IRQ 108
 #define NBOOT_AMP_MBOX_IRQ 174
 #define NBOOT_AMP_IRQ_PRIORITY 0x80
+
+/* Upper bound on the interrupt routes the AMP device tree may claim.  The
+ * console and the transport are required; the rest are peripherals the
+ * control domain also owns.  The limit exists so a malformed or hostile tree
+ * cannot make the validator walk an unbounded list.
+ */
+#define NBOOT_AMP_MAX_IRQ_ROUTES 16
 #define NBOOT_AMP_VRING0_BASE 0x47800000UL
 #define NBOOT_AMP_VRING_NUM 64
 #define NBOOT_AMP_BUFFER_BASE 0x47a00000UL
