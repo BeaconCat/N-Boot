@@ -39,6 +39,7 @@ jobs:
         run: |
           python3 tools/nboot/test_amp_fit.py .
           python3 tools/nboot/test_amp_boot.py .
+          python3 tools/nboot/test_amp_slot.py
 
   build:
     name: build ${{ matrix.config }}
@@ -95,7 +96,7 @@ jobs:
               grep -qx 'CONFIG_BOOTDELAY=0' build/.config
               grep -qx 'CONFIG_AUTOBOOT_KEYED=y' build/.config
               grep -qx 'CONFIG_AUTOBOOT_STOP_STR="!"' build/.config
-              grep -qx 'CONFIG_BOOTCOMMAND="if bootnuttx; then true; else fastboot usb 0; fi"' build/.config
+              grep -qx 'CONFIG_BOOTCOMMAND="if bootamp; then true; elif bootnuttx; then true; else fastboot usb 0; fi"' build/.config
             else
               ! grep -q '^CONFIG_NBOOT_FASTBOOT=' build/.config
               grep -qx 'CONFIG_BOOTCOMMAND="bootnuttx"' build/.config
