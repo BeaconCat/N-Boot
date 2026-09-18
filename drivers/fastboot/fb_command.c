@@ -156,14 +156,38 @@ int fastboot_handle_command(char *cmd_string, char *response)
 
 #if IS_ENABLED(CONFIG_NBOOT_FASTBOOT)
 	if (!strcmp(cmd_string, "flash")) {
+		/* Every recovery slot goes through the verified path.  The AMP
+		 * slots matter as much as the NuttX ones: a raw write leaves
+		 * bootctrl describing a slot that was never filled, and the
+		 * domain's active slot then points at nothing bootable.
+		 * fastboot_oem_board() re-checks the name against the same
+		 * allowlist, so anything listed here is accepted there too.
+		 *
+		 * The target strings are spelled out rather than assembled with
+		 * snprintf(): the release gate greps the linked binary for
+		 * "flash:nuttx_a" to prove the verified path is actually in the
+		 * image, and a runtime-built string would not be found.
+		 */
+		static const struct {
+			const char *partition;
+			const char *target;
+		} slots[] = {
+			{ "nuttx_a", "flash:nuttx_a" },
+			{ "nuttx_b", "flash:nuttx_b" },
+			{ "amp_a",   "flash:amp_a"   },
+			{ "amp_b",   "flash:amp_b"   },
+		};
+		int slot;
+
 		if (!cmd_parameter || strlen(cmd_parameter) > 48) {
 			fastboot_fail("invalid partition name", response);
 			return -1;
 		}
-		if (!strcmp(cmd_parameter, "nuttx_a") ||
-		    !strcmp(cmd_parameter, "nuttx_b")) {
-			fastboot_oem_board(!strcmp(cmd_parameter, "nuttx_a") ?
-					   "flash:nuttx_a" : "flash:nuttx_b",
+		for (slot = 0; slot < ARRAY_SIZE(slots); slot++)
+			if (!strcmp(cmd_parameter, slots[slot].partition))
+				break;
+		if (slot < ARRAY_SIZE(slots)) {
+			fastboot_oem_board((char *)slots[slot].target,
 					   (void *)fastboot_buf_addr,
 					   image_size, response);
 			return FASTBOOT_COMMAND_FLASH;
