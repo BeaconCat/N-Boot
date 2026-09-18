@@ -19,7 +19,7 @@ CONFIG_SKIP_EARLY_DM=y
 CONFIG_BOOTDELAY=0
 CONFIG_AUTOBOOT_KEYED=y
 CONFIG_AUTOBOOT_STOP_STR="!"
-CONFIG_BOOTCOMMAND="if bootnuttx; then true; else fastboot usb 0; fi"
+CONFIG_BOOTCOMMAND="if bootamp; then true; elif bootnuttx; then true; else fastboot usb 0; fi"
 CONFIG_USE_PREBOOT=y
 CONFIG_DEFAULT_FDT_FILE="rockchip/rk3576-kickpi-k7.dtb"
 # CONFIG_DISPLAY_CPUINFO is not set
