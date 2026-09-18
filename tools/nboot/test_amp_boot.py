@@ -95,6 +95,7 @@ ulong bootm_disable_interrupts(void);
 void bootm_final(int);
 void cleanup_before_linux(void);
 void test_entry(void);
+int nboot_contract_slot_override(void);
 int nboot_amp_validate(const void *,u32);
 int nboot_amp_validate_fdt(const void *,u32);
 #endif
@@ -113,7 +114,15 @@ static char dummy_fdt[8192];
 enum {GOOD, BAD_FIT, BUSY_CPU, RESERVE_FAIL, LOST_RESERVE, SIP_FAIL,
       ARM_FAIL, CPU_ON_FAIL, TIMEOUT, BAD_ROUTE, BAD_PRIORITY, PREP_FAIL,
       BAD_FDT, BAD_BOOTARGS, BAD_CPU, ENV_RELOC, RETURN_ENTRY, MAILBOX_STALE, LMB_FAIL,
-      TRANSPORT_TIMEOUT, BAD_LINK, BAD_MAGIC, BAD_BUFFERS, BAD_AVAIL, BAD_FLAGS, BAD_LENGTH};
+      TRANSPORT_TIMEOUT, BAD_LINK, BAD_MAGIC, BAD_BUFFERS, BAD_AVAIL, BAD_FLAGS, BAD_LENGTH,
+      SLOT_GOOD, SLOT_MISSING, NUTTX_REQUEST};
+static int slot_loads;
+int nboot_contract_slot_override(void) {return mode==NUTTX_REQUEST?1:-1;}
+int nboot_amp_load_slot(ulong address,ulong capacity,ulong *size) {
+ assert(address==NBOOT_AMP_STAGE_ADDRESS && capacity==NBOOT_AMP_STAGE_SIZE);
+ assert(!states && !writes && !launched);slot_loads++;
+ *size=4096;return mode==SLOT_MISSING?-ENOENT:0;
+}
 int strict_strtoul(const char *s,unsigned int base,ulong *out) {char *e;*out=strtoul(s,&e,base);return *e?-1:0;}
 ulong read_mpidr(void) {return mode==BAD_CPU?0x100:0;}
 static bool psci_probed;
@@ -214,26 +223,28 @@ void test_entry(void) {assert(launched==1 && cleaned && reserve_size && readl(NB
 int main(void) {
  int m,result,ret;
  char *args[]={"bootamp","60000000","1000","check"};
- for(m=GOOD;m<=BAD_LENGTH;m++) {
+ for(m=GOOD;m<=NUTTX_REQUEST;m++) {
   mode=m;states=sip=launched=quiesced=cleaned=irqoff=reset=entered=writes=mailbox=reserved=0;tick=0;reserve_size=0;psci_probed=false;
   control=1;mark=0xa0a0a0a0;
+  slot_loads=0;
   data=(struct test_gd){.start_addr_sp=0xbf000000,.initial_relocaddr=0xc0000000,.dram={{0x40000000,0x80000000}}};
   result=setjmp(finish);
   if(!result) {
-   ret=do_bootamp(NULL,0,m==GOOD?4:3,args);
+   ret=do_bootamp(NULL,0,m>=SLOT_GOOD?1:(m==GOOD?4:3),args);
    if(m==GOOD){assert(!ret && !states && !writes && !sip);ret=do_bootamp(NULL,0,3,args);}
    assert(ret==CMD_RET_FAILURE && !reset && !launched && !writes);
-  } else if(result==1) {assert(m==GOOD && entered && !reset);}
+  } else if(result==1) {assert((m==GOOD||m==SLOT_GOOD) && entered && !reset);}
   else {assert(reset==1 && (m==SIP_FAIL||m==ARM_FAIL||m==CPU_ON_FAIL||m==TIMEOUT||m==BAD_ROUTE||m==BAD_PRIORITY||m==RETURN_ENTRY||m==MAILBOX_STALE||m>=TRANSPORT_TIMEOUT));}
   printf("BOOT_FLOW mode=%d PASS\n",m);
+  assert(slot_loads==((m==SLOT_GOOD||m==SLOT_MISSING)?1:0));
  }
- puts("NBOOT_AMP_FLOW_PASS cases=26");return 0;
+ puts("NBOOT_AMP_FLOW_PASS cases=29");return 0;
 }
 '''
 with tempfile.TemporaryDirectory(prefix="nboot-flow-") as tmp:
     root=pathlib.Path(tmp)
     (root/'common.h').write_text(common)
-    for name in ('dm.h','asm/global_data.h','asm/io.h','asm/system.h','bootm.h','command.h','cpu_func.h','env.h','hang.h','image.h','linux/arm-smccc.h','linux/delay.h','linux/errno.h','linux/libfdt.h','linux/psci.h','mapmem.h','lmb.h','nboot_amp.h','time.h','virtio_ring.h'):
+    for name in ('nboot_contract.h','dm.h','asm/global_data.h','asm/io.h','asm/system.h','bootm.h','command.h','cpu_func.h','env.h','hang.h','image.h','linux/arm-smccc.h','linux/delay.h','linux/errno.h','linux/libfdt.h','linux/psci.h','mapmem.h','lmb.h','nboot_amp.h','time.h','virtio_ring.h'):
         path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text('#include_next <linux/errno.h>\n' if name=='linux/errno.h' else '#include "common.h"\n')
     (root/'nboot_amp.h').write_text(f'#include "common.h"\n#include "{repo}/include/nboot_amp.h"\n#undef NBOOT_AMP_NUTTX_ENTRY\n#define NBOOT_AMP_NUTTX_ENTRY ((ulong)test_entry)\n')

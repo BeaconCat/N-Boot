@@ -18,9 +18,14 @@
 #define NBOOT_AMP_BUFFER_BASE 0x47a00000UL
 #define NBOOT_AMP_BUFFER_LIMIT 0x00200000UL
 #define NBOOT_AMP_BUFFER_SIZE 512
+#define NBOOT_AMP_STAGE_ADDRESS 0x60000000UL
+#define NBOOT_AMP_STAGE_SIZE 0x04000000UL
 
 /* Validate the complete external-data FIT before any payload is loaded. */
 int nboot_amp_validate(const void *fit, u32 size);
 int nboot_amp_validate_fdt(const void *fdt, u32 size);
+
+/* Load the active AMP slot, consuming an unconfirmed trial before boot. */
+int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size);
 
 #endif
