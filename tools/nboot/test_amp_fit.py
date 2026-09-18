@@ -169,15 +169,33 @@ int fit_image_verify_with_data(const void *f,int n,const void *control,const voi
         node=lib.fdt_path_offset(buf,b'/images/linux/hash'); assert node>=0
         assert lib.fdt_set_name(buf,node,b'checksum')==0
     run('fake-hash-node',good,edit=rename)
-    for name,old,new in (
-        ('big-core-disabled','reg=<0 256>; status="okay"','reg=<0 256>; status="disabled"'),
-        ('wrong-carveout','0x4a400000','0x4a500000'),
-        ('uart-conflict','reg=<0 0x2ad40000 0 0x100>; status="disabled"','reg=<0 0x2ad40000 0 0x100>; status="okay"'),
-        ('wrong-irq-route','108 128 0 174 128 0','108 128 0 174 128 3'),
-        ('missing-private-irq','108 128 0 174 128 0','108 128 0 108 128 0'),
+    for name,old,new,ok in (
+        ('big-core-disabled','reg=<0 256>; status="okay"','reg=<0 256>; status="disabled"',False),
+        ('wrong-carveout','0x4a400000','0x4a500000',False),
+        ('uart-conflict','reg=<0 0x2ad40000 0 0x100>; status="disabled"','reg=<0 0x2ad40000 0 0x100>; status="okay"',False),
+        ('wrong-irq-route','108 128 0 174 128 0','108 128 0 174 128 3',False),
+        ('missing-private-irq','108 128 0 174 128 0','108 128 0 108 128 0',False),
+        # The console and the transport are what this domain cannot run without,
+        # so dropping either must still be refused no matter what else is
+        # claimed.
+        ('missing-uart','108 128 0 174 128 0','174 128 0 220 128 0',False),
+        ('missing-mailbox','108 128 0 174 128 0','108 128 0 220 128 0',False),
+        # Peripherals the control domain also owns may be routed here.
+        ('extra-irq','108 128 0 174 128 0','108 128 0 174 128 0 220 128 0',True),
+        ('many-extra-irqs','108 128 0 174 128 0',
+         '108 128 0 174 128 0 220 128 0 123 128 0 96 128 0 97 128 0',True),
+        # But an extra route is still a route: it must be well formed, and it
+        # must carry the priority the distributor owner configured.
+        ('extra-irq-wrong-priority','108 128 0 174 128 0',
+         '108 128 0 174 128 0 220 128 3',False),
+        ('extra-irq-wrong-affinity','108 128 0 174 128 0',
+         '108 128 0 174 128 0 220 128 1',False),
+        ('irq-route-truncated','108 128 0 174 128 0','108 128 0 174 128',False),
+        ('irq-route-too-many','108 128 0 174 128 0',
+         '108 128 0 174 128 0 ' + ' '.join('220 128 0' for _ in range(16)),False),
     ):
         assert old in dts
-        run(name,fixture(dts.replace(old,new)))
+        run(name,fixture(dts.replace(old,new)),ok=ok)
     prefix='cpus {#address-cells=<2>; #size-cells=<0>;'
     for status in ('okay','disabled'):
         node=f'cpu@0 {{device_type="cpu"; reg=<0 0>; status="{status}"; enable-method="psci";}};'
