@@ -20,6 +20,7 @@
 #include <mapmem.h>
 #include <malloc.h>
 #include <nboot_amp.h>
+#include <nboot_contract.h>
 #include <time.h>
 #include <virtio_ring.h>
 
@@ -192,11 +193,20 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 	void *fdt;
 	int ret;
 	bool check;
+	bool from_slot = argc == 1;
 
-	if ((argc != 3 && argc != 4) || strict_strtoul(argv[1], 16, &address) ||
-	    strict_strtoul(argv[2], 16, &size) ||
-	    (argc == 4 && strcmp(argv[3], "check")))
-		return CMD_RET_USAGE;
+	if (from_slot) {
+		if (nboot_contract_slot_override() >= 0)
+			return CMD_RET_FAILURE;
+		address = NBOOT_AMP_STAGE_ADDRESS;
+		size = NBOOT_AMP_STAGE_SIZE;
+	} else {
+		if ((argc != 3 && argc != 4) ||
+		    strict_strtoul(argv[1], 16, &address) ||
+		    strict_strtoul(argv[2], 16, &size) ||
+		    (argc == 4 && strcmp(argv[3], "check")))
+			return CMD_RET_USAGE;
+	}
 	check = argc == 4;
 	if (size > NBOOT_AMP_MAX_FIT_SIZE ||
 	    !nboot_amp_dram_range(address, size) ||
@@ -219,6 +229,14 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	if (address < 0x60000000UL && address + size > NBOOT_AMP_LINUX_ENTRY)
 		return CMD_RET_FAILURE;
+	if (from_slot) {
+		ret = nboot_amp_load_slot(address, size, &size);
+		if (ret) {
+			printf("bootamp: active slot unavailable (%d), using NuttX\n",
+			       ret);
+			return CMD_RET_FAILURE;
+		}
+	}
 	ret = nboot_amp_validate((void *)address, size);
 	if (ret) {
 		printf("bootamp: FIT rejected before loading (%d)\n", ret);
@@ -399,5 +417,7 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 
 U_BOOT_CMD(bootamp, 4, 0, do_bootamp,
 	   "cold-boot a validated four-A53/four-A72 AMP FIT",
-	   "<fit-address> <fit-size> [check]\n"
+	   "\n"
+	   "    - load the active AMP slot; unconfirmed images need a trial\n"
+	   "bootamp <fit-address> <fit-size> [check]\n"
 	   "    - hexadecimal address/size; check validates without loading");

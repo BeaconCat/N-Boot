@@ -10,6 +10,7 @@
 #include <hash.h>
 #include <malloc.h>
 #include <mapmem.h>
+#include <nboot_amp.h>
 #include <nboot_contract.h>
 #include <nboot_storage.h>
 #include <nboot_update.h>
@@ -30,6 +31,7 @@
 #define K7_BOOTCTRL_BLOCKS       8
 #define K7_NUTTX_LOAD_ADDR       0x40200000UL
 #define K7_NUTTX_DOMAIN          0
+#define K7_AMP_DOMAIN            1
 #define K7_SHA256_SIZE           32
 #define K7_RECOVERY_CHUNK        (64 * 1024)
 
@@ -212,6 +214,94 @@ out:
 	free(records);
 	return target;
 }
+
+#ifdef CONFIG_CMD_BOOTAMP
+int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size)
+{
+	struct k7_bootctrl_disk *records;
+	struct disk_partition control, partition;
+	struct nboot_storage storage;
+	struct k7_domain_disk *domain;
+	struct k7_slot_disk *slot;
+	u8 digest[K7_SHA256_SIZE];
+	int digest_size = sizeof(digest);
+	void *image = NULL;
+	u64 image_size;
+	lbaint_t blocks;
+	int selected, active, ret;
+
+	*size = 0;
+	ret = nboot_storage_open_boot(&storage);
+	if (ret)
+		return ret;
+	ret = part_get_info_by_name(storage.desc, "bootctrl", &control);
+	if (ret < 0)
+		return ret;
+	records = memalign(ARCH_DMA_MINALIGN,
+			   sizeof(*records) * K7_BOOTCTRL_COPY_COUNT);
+	if (!records)
+		return -ENOMEM;
+	ret = k7_bootctrl_read(storage.desc, &control, records, &selected);
+	if (ret)
+		goto out;
+
+	domain = &records[selected].domains[K7_AMP_DOMAIN];
+	active = domain->active_slot;
+	if (active > 1) {
+		ret = -EINVAL;
+		goto out;
+	}
+	slot = &domain->slots[active];
+	image_size = le64_to_cpu(slot->image_size);
+	if (!slot->priority || !image_size ||
+	    (!slot->successful && !slot->tries_remaining)) {
+		ret = -ENOENT;
+		goto out;
+	}
+	ret = part_get_info_by_name(storage.desc, active ? "amp_b" : "amp_a",
+				    &partition);
+	if (ret < 0)
+		goto out;
+	blocks = DIV_ROUND_UP(image_size, storage.desc->blksz);
+	if (image_size > UINT_MAX || blocks > partition.size ||
+	    blocks > capacity / storage.desc->blksz) {
+		ret = -EFBIG;
+		goto out;
+	}
+
+	/* Persist the trial count before any payload or kernel can fail. */
+
+	if (!slot->successful) {
+		slot->tries_remaining--;
+		ret = k7_bootctrl_write(storage.desc, &control, records,
+					selected);
+		if (ret)
+			goto out;
+	}
+	image = map_sysmem(address, blocks * storage.desc->blksz);
+	if (blk_dread(storage.desc, partition.start, blocks, image) != blocks) {
+		ret = -EIO;
+		goto out;
+	}
+	ret = hash_block("sha256", image, image_size, digest, &digest_size);
+	if (ret || digest_size != K7_SHA256_SIZE ||
+	    memcmp(digest, slot->sha256, K7_SHA256_SIZE)) {
+		ret = -EKEYREJECTED;
+		goto out;
+	}
+	flush_cache(address, ALIGN(image_size, ARCH_DMA_MINALIGN));
+	*size = image_size;
+	printf("bootamp: loaded %s slot %c, version %llu (%s)\n",
+	       storage.medium == NBOOT_MEDIUM_EMMC ? "eMMC" : "SD",
+	       'a' + active, le64_to_cpu(slot->image_version),
+	       slot->successful ? "confirmed" : "trial");
+out:
+	if (image)
+		unmap_sysmem(image);
+	free(records);
+	return ret;
+}
+#endif
 
 static int k7_nuttx_partition(struct blk_desc *desc, int slot,
 			      struct disk_partition *partition)
