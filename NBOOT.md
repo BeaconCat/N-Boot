@@ -171,9 +171,13 @@ This does not change the SD/eMMC selection policy or enable caches early.
 
 ## Experimental four-plus-four AMP boot
 
-The K7 full profile provides `bootamp <address> <size> [check]`. Both arguments
-are hexadecimal. `check` validates the ABI2 external-data FIT without loading
-payloads or starting CPUs. The default boot command remains `bootnuttx`.
+The K7 full profile first runs `bootamp` without arguments to load the active
+AMP slot. If it is unavailable or rejected, it runs `bootnuttx`, then Fastboot
+if NuttX is also unavailable. The minimal profile remains NuttX-only.
+
+The explicit `bootamp <address> <size> [check]` RAM interface is unchanged.
+Both numbers are hexadecimal. `check` validates the ABI2 external-data FIT
+without loading payloads or starting CPUs.
 
 The FIT contains Linux at 0x42000000, its matching K7 DTB and initramfs, and
 openvela at 0x4a400000. Linux owns A72 MPIDRs 0x100..0x103; openvela owns A53
@@ -198,13 +202,35 @@ bootamp 60000000 <hex-file-size>
 
 On 2026-09-10, hardware testing reached four-core openvela NSH and four-core
 Linux, with successful real RPMsg `nyampctl health` and `nyampctl info` calls.
-This does not load AMP A/B slots automatically or validate NPU workloads.
+This does not validate NPU workloads.
 Repeated LMB reservation warnings for already reserved ranges remain visible
 during bootm preparation; the tested handoff completes despite them.
 
 Never flash this AMP FIT into ordinary NuttX slots, which boot at 0x40200000.
 The bootloader itself still requires the team's complete 4 MiB vendor FIT;
 do not flash the raw U-Boot proper binary into the bootloader partition.
+
+### Active-slot trial and confirmation
+
+No bootctrl format change is needed. The loader reads domain 1's active slot,
+checks its priority, size and SHA-256, and stages at 0x60000000 with a 64 MiB
+limit. It does not select a different AMP slot automatically.
+
+An unconfirmed slot needs a nonzero `tries_remaining`. The loader persists a
+decrement before loading its payload or starting any kernel. Updated nbootctl
+staging/activation grants one AMP trial. A reset before confirmation therefore
+returns to ordinary NuttX after that trial is consumed. Ordinary NuttX's
+zero-try boot eligibility is unchanged.
+
+After observing a successful AMP health/info exchange, reboot to ordinary
+NuttX and explicitly mark that AMP slot successful with nbootctl. Confirmed
+images do not consume trials on subsequent boots. Confirmation is an operator
+action, not an automatic acknowledgement from the storage-less AMP profile.
+
+A requested NuttX A/B reboot takes precedence over automatic AMP loading.
+Serial `!` recovery, the hardware recovery key and explicit `bootnuttx` remain
+available. This is not watchdog supervision: an already-confirmed kernel that
+later crashes still requires those recovery paths.
 
 ## Licensing and upstream
 
