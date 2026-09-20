@@ -34,6 +34,18 @@ enum nboot_handoff_reason {
 	NBOOT_HANDOFF_NORMAL = 0,
 	NBOOT_HANDOFF_REQUESTED_SLOT = 1,
 	NBOOT_HANDOFF_FALLBACK = 2,
+	/* The image came from RAM (bootamp <addr> <size>): no slot is running. */
+	NBOOT_HANDOFF_RAM = 3,
+};
+
+/* Which bootctrl domain the running image belongs to.  The value lives in
+ * bits 3:2 of the header, which version 2 readers require to be zero: a
+ * reader that predates the field rejects an AMP record as out of range
+ * instead of mistaking the AMP slot for a NuttX slot.
+ */
+enum nboot_handoff_domain {
+	NBOOT_HANDOFF_DOMAIN_NUTTX = 0,
+	NBOOT_HANDOFF_DOMAIN_AMP = 1,
 };
 
 enum nboot_boot_medium {
@@ -45,6 +57,17 @@ enum nboot_boot_medium {
 #define NBOOT_REBOOT_REQUEST(target) \
 	(NBOOT_REBOOT_MAGIC | ((target) & 0xffU))
 
+/*
+ * 31:16 magic, 15:12 version, 11:8 reason, 7:4 medium, 3:2 domain,
+ * 1 reserved (zero), 0 slot.  A NuttX-domain header is bit for bit what it
+ * was before the domain field existed.
+ */
+#define NBOOT_DOMAIN_HANDOFF_HEADER(medium, domain, slot, reason) \
+	(NBOOT_HANDOFF_MAGIC | (NBOOT_HANDOFF_VERSION << 12) | \
+	 (((reason) & 0xfU) << 8) | (((medium) & 0xfU) << 4) | \
+	 (((domain) & 0x3U) << 2) | ((slot) & 0x1U))
+
+/* Preserve the original three-argument NuttX-domain macro. */
 #define NBOOT_HANDOFF_HEADER(medium, slot, reason) \
 	(NBOOT_HANDOFF_MAGIC | (NBOOT_HANDOFF_VERSION << 12) | \
 	 (((reason) & 0xfU) << 8) | (((medium) & 0xfU) << 4) | \
@@ -56,5 +79,9 @@ int nboot_contract_slot_override(void);
 void nboot_contract_write_handoff(enum nboot_boot_medium medium,
 				  unsigned int slot, u64 generation,
 				  enum nboot_handoff_reason reason);
+void nboot_contract_write_domain_handoff(enum nboot_handoff_domain domain,
+					 enum nboot_boot_medium medium,
+					 unsigned int slot, u64 generation,
+					 enum nboot_handoff_reason reason);
 
 #endif /* __NBOOT_CONTRACT_H */

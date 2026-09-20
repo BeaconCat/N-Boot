@@ -118,16 +118,32 @@ global software reset. OS_REG13 through OS_REG15 continue to carry the handoff:
 
 The persistent request takes precedence over a legacy register request.
 
-Before branching to a verified NuttX image, N-Boot writes the generation words
-and then publishes the header last:
+Before branching to a verified NuttX image, and before `bootamp` starts the
+first Linux CPU, N-Boot writes the generation words and then publishes the
+header last:
 
 ```text
 bits 31:16  magic 0x4e48
 bits 15:12  handoff version (2)
-bits 11:8   reason: 0=normal, 1=requested slot, 2=fallback
+bits 11:8   reason: 0=normal, 1=requested slot, 2=fallback, 3=RAM image
 bits 7:4    medium: 1=SD, 2=eMMC
-bits 3:0    slot: 0=A, 1=B
+bits 3:2    domain: 0=NuttX slot, 1=AMP control domain
+bit  1      reserved, zero
+bit  0      slot: 0=A, 1=B
 ```
+
+The domain field occupies bits that version 2 defined as zero, so a header for
+a NuttX slot is unchanged. A reader from before the field checks `slot <= 1`
+over the whole low nibble and therefore rejects an AMP record as out of range;
+it never mistakes the AMP slot for a NuttX slot. Reason 3 is published only by
+`bootamp <address> <size>`: the image runs from no slot, the slot bit is zero
+and meaningless, the generation words are zero, and the record exists so the
+OS can still find bootctrl on the right medium. `check` publishes nothing, and
+so does a RAM boot when no boot medium can be opened.
+
+`bootamp` publishes after its last recoverable failure: every later error is a
+whole-SoC reset, so a failed AMP attempt that falls through to `bootnuttx`
+never leaves an AMP record behind.
 
 N-Boot clears an old handoff header at the start of every boot. A system-side
 reader must validate magic and version before using the slot or generation.

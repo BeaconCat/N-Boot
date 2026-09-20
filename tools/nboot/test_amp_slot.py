@@ -44,12 +44,14 @@ typedef uint64_t __le64;
 struct blk_desc { ulong blksz; };
 struct disk_partition { ulong start, size; };
 struct nboot_storage { struct blk_desc *desc; int medium; };
+struct nboot_amp_origin { unsigned int medium, slot; u64 generation; };
+static struct nboot_amp_origin origin;
 static struct blk_desc disk = {512};
 static struct k7_bootctrl_disk saved;
 static unsigned char payload[1024], staging[1024];
 static int writes, reads, fault;
 static int nboot_storage_open_boot(struct nboot_storage *s)
-{ s->desc=&disk;s->medium=1;return fault==1?-ENODEV:0; }
+{ s->desc=&disk;s->medium=2;return fault==1?-ENODEV:0; }
 static int part_get_info_by_name(struct blk_desc *d,const char *name,
                                 struct disk_partition *p)
 { assert(d==&disk);p->size=2048;p->start=100;
@@ -66,7 +68,7 @@ static int k7_bootctrl_write(struct blk_desc *d,struct disk_partition *p,
                              struct k7_bootctrl_disk *r,int selected)
 { (void)d;assert(p->start==100 && selected==1);writes++;
   if(fault==3)return -EIO;
-  saved=r[selected];return 0; }
+  r[selected].generation++;saved=r[selected];return 0; }
 static void *map_sysmem(ulong address,ulong size)
 { assert(address==0x60000000 && size==1024);return staging; }
 static void unmap_sysmem(void *p) {assert(p==staging);}
@@ -85,7 +87,8 @@ static void setup(int confirmed,int tries)
 {
   memset(&saved,0,sizeof(saved));memset(payload,0x5a,sizeof(payload));
   memset(&saved.domains[0],0x33,sizeof(saved.domains[0]));
-  saved.domains[1].active_slot=1;
+  saved.domains[1].active_slot=1;saved.generation=41;
+  memset(&origin,0xff,sizeof(origin));
   struct k7_slot_disk *s=&saved.domains[1].slots[1];
   s->priority=15;s->successful=confirmed;s->tries_remaining=tries;
   s->image_size=513;s->image_version=7;
@@ -96,33 +99,39 @@ int main(void)
   ulong size;
   setup(0,1);
   struct k7_domain_disk nuttx=saved.domains[0];
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0 && size==513);
   assert(writes==1 && reads==1 && !saved.domains[1].slots[1].tries_remaining);
   assert(!memcmp(&nuttx,&saved.domains[0],sizeof(nuttx)));
+  /* What the handoff will say: the medium, the slot that was loaded, and the
+   * generation as the trial write left it, not as it was read.
+   */
+  assert(origin.medium==2 && origin.slot==1 && origin.generation==42);
   /* Consuming the last trial does not make the slot ineligible: eligibility
    * is priority alone, so an activated slot keeps booting whether or not an
    * OS ever confirmed it.  A freshly activated slot has zero tries by
    * construction, and requiring one would leave the AMP domain permanently
    * on the other side.  The trial is still consumed exactly once.
    */
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0 && size==513);
   assert(writes==1 && reads==2 && !saved.domains[1].slots[1].tries_remaining);
   setup(1,0);
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0);
   assert(writes==0 && reads==2);
   setup(0,1);fault=3;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EIO && !reads);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EIO && !reads);
   setup(0,1);fault=4;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EIO);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EIO);
+  /* A slot that did not load reports no origin. */
+  assert(origin.medium==0xffffffffu && origin.slot==0xffffffffu);
   assert(writes==1 && !saved.domains[1].slots[1].tries_remaining);
   setup(0,1);payload[0]^=1;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EKEYREJECTED);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EKEYREJECTED);
   assert(writes==1 && !saved.domains[1].slots[1].tries_remaining);
   setup(0,1);
-  assert(nboot_amp_load_slot(0x60000000,512,&size)==-EFBIG && !writes && !reads);
+  assert(nboot_amp_load_slot(0x60000000,512,&size,&origin)==-EFBIG && !writes && !reads);
   setup(1,0);saved.domains[1].slots[1].image_size=0;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && !writes);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENOENT && !writes);
   /* An unconfirmed slot with no tries left still loads.  That combination is
    * exactly what activation produces, so refusing it would make every
    * freshly activated AMP slot unbootable.  Note the write count: with the
@@ -130,14 +139,14 @@ int main(void)
    * not be rewritten on this path.
    */
   setup(0,0);
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0 && size==513);
   assert(writes==0 && reads==1);
   setup(0,1);saved.domains[1].active_slot=2;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EINVAL && !writes);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EINVAL && !writes);
   setup(0,1);fault=1;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENODEV && !writes);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENODEV && !writes);
   setup(0,1);fault=2;
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && !writes);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENOENT && !writes);
   puts("AMP_SLOT_PASS trial confirmed empty bounds read hash write failures");
   return 0;
 }

@@ -130,6 +130,18 @@ int nboot_contract_slot_override(void)
 	return requested_slot;
 }
 
+void nboot_contract_write_domain_handoff(enum nboot_handoff_domain domain,
+					 enum nboot_boot_medium medium,
+					 unsigned int slot, u64 generation,
+					 enum nboot_handoff_reason reason)
+{
+	/* The header goes last: a reader that sees it finds the rest in place. */
+	writel(lower_32_bits(generation), NBOOT_CONTRACT_GENERATION_LO_REG);
+	writel(upper_32_bits(generation), NBOOT_CONTRACT_GENERATION_HI_REG);
+	writel(NBOOT_DOMAIN_HANDOFF_HEADER(medium, domain, slot, reason),
+	       NBOOT_CONTRACT_HANDOFF_REG);
+}
+
 void nboot_contract_write_handoff(enum nboot_boot_medium medium,
 				  unsigned int slot, u64 generation,
 				  enum nboot_handoff_reason reason)

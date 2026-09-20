@@ -32,7 +32,21 @@
 int nboot_amp_validate(const void *fit, u32 size);
 int nboot_amp_validate_fdt(const void *fdt, u32 size);
 
+/* Where a loaded AMP image came from, for the handoff to the control domain.
+ * medium is an enum nboot_boot_medium value; generation is the bootctrl
+ * generation after any trial accounting.
+ */
+struct nboot_amp_origin {
+	unsigned int medium;
+	unsigned int slot;
+	u64 generation;
+};
+
 /* Load the active AMP slot, consuming an unconfirmed trial before boot. */
-int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size);
+int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
+			struct nboot_amp_origin *origin);
+
+/* The medium that holds bootctrl, for an image that came from RAM. */
+int nboot_amp_boot_medium(unsigned int *medium);
 
 #endif

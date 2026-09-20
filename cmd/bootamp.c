@@ -187,6 +187,8 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 {
 	ulong address, size, resident_start, resident_end, started;
 	ulong marker, fdt_address;
+	struct nboot_amp_origin origin = { 0 };
+	bool publish;
 	u32 lines, value;
 	u8 target;
 	char spec[40];
@@ -230,7 +232,7 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (address < 0x60000000UL && address + size > NBOOT_AMP_LINUX_ENTRY)
 		return CMD_RET_FAILURE;
 	if (from_slot) {
-		ret = nboot_amp_load_slot(address, size, &size);
+		ret = nboot_amp_load_slot(address, size, &size, &origin);
 		if (ret) {
 			printf("bootamp: active slot unavailable (%d), using NuttX\n",
 			       ret);
@@ -246,6 +248,16 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 		puts("bootamp: FIT preflight passed; no CPU or payload changed\n");
 		return CMD_RET_SUCCESS;
 	}
+
+	/* The control domain finds bootctrl through the handoff.  A RAM image
+	 * runs from no slot, but it still needs the medium to stage one, so it
+	 * gets a record that says so; without a medium there is nothing true
+	 * to publish and the OS sees no handoff, as before.
+	 */
+
+	publish = from_slot || !nboot_amp_boot_medium(&origin.medium);
+	if (!publish)
+		puts("bootamp: boot medium unknown; no handoff for this RAM image\n");
 	ret = nboot_amp_cpus_off();
 	if (ret) {
 		printf("bootamp: cold CPU topology required (%d)\n", ret);
@@ -367,6 +379,18 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 	    (readl(NBOOT_AMP_MBOX0 + NBOOT_AMP_MBOX_B2A_STATUS) & 1) ||
 	    (readl(NBOOT_AMP_MBOX3 + NBOOT_AMP_MBOX_B2A_STATUS) & 1))
 		nboot_amp_reset("cannot arm fresh GIC handshake");
+
+	/* Published before any other core runs, and only once every remaining
+	 * failure is a whole-SoC reset: bootnuttx never inherits this record.
+	 */
+
+	if (publish)
+		nboot_contract_write_domain_handoff(NBOOT_HANDOFF_DOMAIN_AMP,
+						    origin.medium, origin.slot,
+						    origin.generation,
+						    from_slot ?
+						    NBOOT_HANDOFF_NORMAL :
+						    NBOOT_HANDOFF_RAM);
 	ret = (long)invoke_psci_fn(PSCI_0_2_FN64_CPU_ON, NBOOT_AMP_LINUX_CPU,
 				   images.ep, 0);
 	if (ret != PSCI_RET_SUCCESS)

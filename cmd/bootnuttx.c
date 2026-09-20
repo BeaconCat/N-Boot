@@ -216,7 +216,20 @@ out:
 }
 
 #ifdef CONFIG_CMD_BOOTAMP
-int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size)
+int nboot_amp_boot_medium(unsigned int *medium)
+{
+	struct nboot_storage storage;
+	int ret;
+
+	ret = nboot_storage_open_boot(&storage);
+	if (ret)
+		return ret;
+	*medium = storage.medium;
+	return 0;
+}
+
+int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
+			struct nboot_amp_origin *origin)
 {
 	struct k7_bootctrl_disk *records;
 	struct disk_partition control, partition;
@@ -291,6 +304,9 @@ int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size)
 	}
 	flush_cache(address, ALIGN(image_size, ARCH_DMA_MINALIGN));
 	*size = image_size;
+	origin->medium = storage.medium;
+	origin->slot = active;
+	origin->generation = le64_to_cpu(records[selected].generation);
 	printf("bootamp: loaded %s slot %c, version %llu (%s)\n",
 	       storage.medium == NBOOT_MEDIUM_EMMC ? "eMMC" : "SD",
 	       'a' + active, le64_to_cpu(slot->image_version),
