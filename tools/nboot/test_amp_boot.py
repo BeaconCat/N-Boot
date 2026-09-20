@@ -95,7 +95,6 @@ ulong bootm_disable_interrupts(void);
 void bootm_final(int);
 void cleanup_before_linux(void);
 void test_entry(void);
-int nboot_contract_slot_override(void);
 int nboot_amp_validate(const void *,u32);
 int nboot_amp_validate_fdt(const void *,u32);
 #endif
@@ -115,13 +114,33 @@ enum {GOOD, BAD_FIT, BUSY_CPU, RESERVE_FAIL, LOST_RESERVE, SIP_FAIL,
       ARM_FAIL, CPU_ON_FAIL, TIMEOUT, BAD_ROUTE, BAD_PRIORITY, PREP_FAIL,
       BAD_FDT, BAD_BOOTARGS, BAD_CPU, ENV_RELOC, RETURN_ENTRY, MAILBOX_STALE, LMB_FAIL,
       TRANSPORT_TIMEOUT, BAD_LINK, BAD_MAGIC, BAD_BUFFERS, BAD_AVAIL, BAD_FLAGS, BAD_LENGTH,
-      SLOT_GOOD, SLOT_MISSING, NUTTX_REQUEST};
-static int slot_loads;
+      SLOT_GOOD, SLOT_MISSING, NUTTX_REQUEST, RAM_NO_MEDIUM};
+static int slot_loads, handoffs, medium_lookups;
+static u32 handoff_header;
+static u64 handoff_generation;
 int nboot_contract_slot_override(void) {return mode==NUTTX_REQUEST?1:-1;}
-int nboot_amp_load_slot(ulong address,ulong capacity,ulong *size) {
+int nboot_amp_load_slot(ulong address,ulong capacity,ulong *size,struct nboot_amp_origin *origin) {
  assert(address==NBOOT_AMP_STAGE_ADDRESS && capacity==NBOOT_AMP_STAGE_SIZE);
  assert(!states && !writes && !launched);slot_loads++;
- *size=4096;return mode==SLOT_MISSING?-ENOENT:0;
+ if(mode==SLOT_MISSING)return -ENOENT;
+ origin->medium=NBOOT_MEDIUM_EMMC;origin->slot=1;origin->generation=0x1234567890ULL;
+ *size=4096;return 0;
+}
+int nboot_amp_boot_medium(unsigned int *medium) {
+ assert(!states && !writes && !launched);medium_lookups++;
+ if(mode==RAM_NO_MEDIUM)return -ENODEV;
+ *medium=NBOOT_MEDIUM_SD;return 0;
+}
+/* The record must exist before the first other core runs, and must not be
+ * written while a failure could still fall through to bootnuttx.
+ */
+void nboot_contract_write_domain_handoff(enum nboot_handoff_domain domain,
+ enum nboot_boot_medium medium,unsigned int slot,u64 generation,
+ enum nboot_handoff_reason reason) {
+ assert(cleaned && quiesced && irqoff && !launched && sip==3 && mailbox==3);
+ handoffs++;handoff_generation=generation;
+ assert(NBOOT_HANDOFF_HEADER(NBOOT_MEDIUM_EMMC,1,NBOOT_HANDOFF_NORMAL)==0x4e482021);
+ handoff_header=NBOOT_DOMAIN_HANDOFF_HEADER(medium,domain,slot,reason);
 }
 int strict_strtoul(const char *s,unsigned int base,ulong *out) {char *e;*out=strtoul(s,&e,base);return *e?-1:0;}
 ulong read_mpidr(void) {return mode==BAD_CPU?0x100:0;}
@@ -135,6 +154,7 @@ ulong invoke_psci_fn(ulong op,ulong cpu,ulong entry,ulong arg) {
  if(op==PSCI_0_2_FN64_AFFINITY_INFO)return mode==BUSY_CPU?0:1;
  assert(op==PSCI_0_2_FN64_CPU_ON && cpu==0x100 && entry==0x42000000 && arg==0);
  assert(cleaned && quiesced && irqoff && mark==0 && control==0 && sip==3 && reserve_size && mailbox==3);
+ assert(handoffs==(mode==RAM_NO_MEDIUM?0:1));
  launched++;return mode==CPU_ON_FAIL?(ulong)-1:0;
 }
 void bootm_init(struct bootm_info *b) {memset(b,0,sizeof(*b));}
@@ -223,30 +243,39 @@ void test_entry(void) {assert(launched==1 && cleaned && reserve_size && readl(NB
 int main(void) {
  int m,result,ret;
  char *args[]={"bootamp","60000000","1000","check"};
- for(m=GOOD;m<=NUTTX_REQUEST;m++) {
+ for(m=GOOD;m<=RAM_NO_MEDIUM;m++) {
   mode=m;states=sip=launched=quiesced=cleaned=irqoff=reset=entered=writes=mailbox=reserved=0;tick=0;reserve_size=0;psci_probed=false;
   control=1;mark=0xa0a0a0a0;
-  slot_loads=0;
+  slot_loads=handoffs=medium_lookups=0;handoff_header=0;handoff_generation=0;
   data=(struct test_gd){.start_addr_sp=0xbf000000,.initial_relocaddr=0xc0000000,.dram={{0x40000000,0x80000000}}};
   result=setjmp(finish);
   if(!result) {
-   ret=do_bootamp(NULL,0,m>=SLOT_GOOD?1:(m==GOOD?4:3),args);
-   if(m==GOOD){assert(!ret && !states && !writes && !sip);ret=do_bootamp(NULL,0,3,args);}
+   ret=do_bootamp(NULL,0,(m>=SLOT_GOOD && m!=RAM_NO_MEDIUM)?1:(m==GOOD?4:3),args);
+   if(m==GOOD){assert(!ret && !states && !writes && !sip && !handoffs && !medium_lookups);ret=do_bootamp(NULL,0,3,args);}
    assert(ret==CMD_RET_FAILURE && !reset && !launched && !writes);
-  } else if(result==1) {assert((m==GOOD||m==SLOT_GOOD) && entered && !reset);}
+  } else if(result==1) {
+   assert((m==GOOD||m==SLOT_GOOD||m==RAM_NO_MEDIUM) && entered && !reset);
+   /* magic 0x4e48, version 2, then the reason, medium and domain/slot nibbles. */
+   if(m==SLOT_GOOD)assert(handoffs==1 && handoff_header==0x4e482025 && handoff_generation==0x1234567890ULL && !medium_lookups);
+   if(m==GOOD)assert(handoffs==1 && handoff_header==0x4e482314 && !handoff_generation && medium_lookups==1);
+   if(m==RAM_NO_MEDIUM)assert(!handoffs && medium_lookups==1);
+  }
   else {assert(reset==1 && (m==SIP_FAIL||m==ARM_FAIL||m==CPU_ON_FAIL||m==TIMEOUT||m==BAD_ROUTE||m==BAD_PRIORITY||m==RETURN_ENTRY||m==MAILBOX_STALE||m>=TRANSPORT_TIMEOUT));}
+  /* A failure that returns to the shell leaves no record for bootnuttx. */
+  if(!result)assert(!handoffs);
   printf("BOOT_FLOW mode=%d PASS\n",m);
   assert(slot_loads==((m==SLOT_GOOD||m==SLOT_MISSING)?1:0));
  }
- puts("NBOOT_AMP_FLOW_PASS cases=29");return 0;
+ puts("NBOOT_AMP_FLOW_PASS cases=30");return 0;
 }
 '''
 with tempfile.TemporaryDirectory(prefix="nboot-flow-") as tmp:
     root=pathlib.Path(tmp)
     (root/'common.h').write_text(common)
-    for name in ('nboot_contract.h','dm.h','asm/global_data.h','asm/io.h','asm/system.h','bootm.h','command.h','cpu_func.h','env.h','hang.h','image.h','linux/arm-smccc.h','linux/delay.h','linux/errno.h','linux/libfdt.h','linux/psci.h','mapmem.h','lmb.h','nboot_amp.h','time.h','virtio_ring.h'):
+    for name in ('linux/types.h','dm.h','asm/global_data.h','asm/io.h','asm/system.h','bootm.h','command.h','cpu_func.h','env.h','hang.h','image.h','linux/arm-smccc.h','linux/delay.h','linux/errno.h','linux/libfdt.h','linux/psci.h','mapmem.h','lmb.h','nboot_amp.h','time.h','virtio_ring.h'):
         path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text('#include_next <linux/errno.h>\n' if name=='linux/errno.h' else '#include "common.h"\n')
+    (root/'nboot_contract.h').write_text(f'#include "common.h"\n#include "{repo}/include/nboot_contract.h"\n')
     (root/'nboot_amp.h').write_text(f'#include "common.h"\n#include "{repo}/include/nboot_amp.h"\n#undef NBOOT_AMP_NUTTX_ENTRY\n#define NBOOT_AMP_NUTTX_ENTRY ((ulong)test_entry)\n')
     shutil.copyfile(repo/'cmd/bootamp.c',root/'command.c')
     (root/'test.c').write_text(test)
