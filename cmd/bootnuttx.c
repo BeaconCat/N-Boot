@@ -241,8 +241,10 @@ int nboot_amp_boot_medium(unsigned int *medium)
 	return 0;
 }
 
-int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
-			struct nboot_amp_origin *origin)
+static int nboot_amp_load_slot_once(ulong address, ulong capacity,
+				    ulong *size,
+				    struct nboot_amp_origin *origin,
+				    bool *trial_consumed)
 {
 	struct k7_bootctrl_disk *records;
 	struct disk_partition control, partition;
@@ -297,12 +299,13 @@ int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
 
 	/* Persist the trial count before any payload or kernel can fail. */
 
-	if (!slot->successful && slot->tries_remaining) {
+	if (!*trial_consumed && !slot->successful && slot->tries_remaining) {
 		slot->tries_remaining--;
 		ret = k7_bootctrl_write(storage.desc, &control, records,
 					selected);
 		if (ret)
 			goto out;
+		*trial_consumed = true;
 	}
 	image = map_sysmem(address, blocks * storage.desc->blksz);
 	if (blk_dread(storage.desc, partition.start, blocks, image) != blocks) {
@@ -328,6 +331,25 @@ out:
 	if (image)
 		unmap_sysmem(image);
 	free(records);
+	return ret;
+}
+
+int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
+			struct nboot_amp_origin *origin)
+{
+	bool trial_consumed = false;
+	int ret;
+
+	/* A medium that does not answer is tried again from a fresh card
+	 * initialisation; a slot that is empty, too large or fails its digest
+	 * is an answer and is not.  One boot consumes at most one trial however
+	 * many attempts it takes.
+	 */
+	do {
+		ret = nboot_amp_load_slot_once(address, capacity, size, origin,
+					       &trial_consumed);
+	} while (ret && nboot_storage_retry("bootamp", ret));
+
 	return ret;
 }
 #endif
