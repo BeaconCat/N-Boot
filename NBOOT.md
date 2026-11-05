@@ -172,6 +172,38 @@ fastboot getvar nboot-medium
 Changing the Fastboot target does not write media and resets on USB disconnect.
 Subsequent standard Fastboot writes and erases do not require authorization.
 
+### A medium that does not answer
+
+Observed after warm resets on the K7: `bootamp: active slot unavailable (-5)`,
+then `bootnuttx: MMC device 1 is unavailable`, then Fastboot, while a second
+`mmc dev 1` typed at the prompt brought the eMMC back. The device number in
+that message shows the eMMC had been initialised and selected earlier in the
+same boot, so the failure was a later transfer, not the first probe. The cause
+on the card or host side is not established.
+
+The slot loaders and the one-shot request reader therefore separate a medium
+that does not answer (`-EIO`: the soldered eMMC fails to initialise, block 0
+cannot be read, a bootctrl copy or a payload read fails) from one that answers
+with something unusable (empty SD slot, foreign layout, empty slot, bad
+digest). Only the first is retried: up to five times per boot, waiting 200,
+400, 800, 1600 and 3200 ms, and forgetting the card before each attempt so
+that `mmc_init()` starts again from CMD0, which is what `mmc dev` does. The
+first two retries keep HS200; from the third on the eMMC is limited to 52 MHz
+high-speed mode for the rest of this N-Boot run, which needs no tuning (both
+profiles enable `CONFIG_MMC_SPEED_MODE_SET` for this). Each retry prints one
+line:
+
+```text
+bootamp: boot medium not ready (-5); re-initialising, retry 1/5 in 200 ms
+```
+
+The budget is shared by the request reader, `bootamp` and `bootnuttx`, so a
+medium that stays silent delays the fall-through to Fastboot by about six
+seconds once, not once per command. A first attempt that succeeds never waits.
+One boot still consumes at most one AMP trial, and a NuttX slot whose payload
+could not be read keeps its priority: only a payload that was read and failed
+its checks disables the slot.
+
 ## Early initialization
 
 Both K7 configurations defer the full device-model scan until after

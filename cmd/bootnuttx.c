@@ -415,6 +415,7 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	if (argc > 2)
 		return CMD_RET_USAGE;
+retry:
 	if (argc == 2) {
 		devnum = dectoul(argv[1], NULL);
 		ret = nboot_storage_open(devnum, &storage);
@@ -423,7 +424,10 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 		devnum = nboot_storage_boot_devnum();
 	}
 	if (ret) {
-		printf("bootnuttx: MMC device %d is unavailable\n", devnum);
+		if (nboot_storage_retry("bootnuttx", ret))
+			goto retry;
+		printf("bootnuttx: MMC device %d is unavailable (%d)\n", devnum,
+		       ret);
 		return CMD_RET_FAILURE;
 	}
 	desc = storage.desc;
@@ -442,8 +446,10 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	ret = k7_bootctrl_read(desc, &bootctrl, records, &selected);
 	if (ret) {
-		printf("bootnuttx: no valid bootctrl copy (%d)\n", ret);
 		free(records);
+		if (nboot_storage_retry("bootnuttx", ret))
+			goto retry;
+		printf("bootnuttx: no valid bootctrl copy (%d)\n", ret);
 		return CMD_RET_FAILURE;
 	}
 	requested = nboot_contract_slot_override();
@@ -503,9 +509,15 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 			return CMD_RET_FAILURE;
 		}
 
-		/* A transport failure does not prove that the slot is corrupt. */
+		/* A medium that did not answer says nothing about the image.
+		 * Disabling the slot for it would turn one bad read into a
+		 * slot that never boots again, and then do the same to the
+		 * other one.
+		 */
 		if (ret == -EIO) {
 			free(records);
+			if (nboot_storage_retry("bootnuttx", ret))
+				goto retry;
 			printf("bootnuttx: slot %c could not be read (%d); slot metadata left unchanged\n",
 			       'a' + chosen, ret);
 			return CMD_RET_FAILURE;
