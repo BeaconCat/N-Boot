@@ -92,7 +92,7 @@ static int do_fastboot_usb(int argc, char *const argv[],
 	g_dnl_clear_detach();
 	ret = g_dnl_register("usb_dnl_fastboot");
 	if (ret)
-		return ret;
+		goto release_udc;
 
 	if (!g_dnl_board_usb_cable_connected()) {
 		puts("\rUSB cable not detected.\n" \
@@ -122,6 +122,7 @@ static int do_fastboot_usb(int argc, char *const argv[],
 exit:
 	/* Disconnect while the controller registers are still available. */
 	g_dnl_unregister();
+release_udc:
 	udc_device_put(udc);
 	g_dnl_clear_detach();
 

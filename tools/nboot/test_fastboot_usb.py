@@ -64,7 +64,11 @@ int main(void)
  reset(); cable = false;
  assert(do_fastboot_usb(2, args, 0, 0) == CMD_RET_FAILURE);
  assert(unregisters == 1 && puts_count == 1 && events == 12);
- puts("FASTBOOT_USB_LIFECYCLE_PASS ordering cable_failure acquisition_failure");
+ reset(); register_error = -12;
+ assert(do_fastboot_usb(2, args, 0, 0) == -12);
+ assert(gets == 1 && registrations == 1 && !unregisters && puts_count == 1);
+ assert(events == 2);
+ puts("FASTBOOT_USB_LIFECYCLE_PASS ordering cable_failure acquisition_failure registration_failure");
  return 0;
 }
 '''
