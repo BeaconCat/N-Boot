@@ -270,10 +270,11 @@ before loading the payload; exhausting it does not disable the slot. Read or
 validation failures return to the NuttX boot path without clearing the AMP
 slot's priority. Ordinary NuttX's zero-try eligibility is unchanged.
 
-After observing a successful AMP health/info exchange, reboot to ordinary
-NuttX and explicitly mark that AMP slot successful with nbootctl. Confirmed
-images do not consume trials on subsequent boots. Confirmation is an operator
-action, not an automatic acknowledgement from the storage-less AMP profile.
+After observing a successful AMP health/info exchange, an AMP-aware
+system-side updater can use the published domain handoff to confirm the running
+AMP slot directly; rebooting to standalone NuttX is not required. Confirmed
+images do not consume trials on subsequent boots. Confirmation remains an
+explicit operator action, not an automatic acknowledgement from either OS.
 
 A requested NuttX A/B reboot takes precedence over automatic AMP loading.
 Serial `!` recovery, the hardware recovery key and explicit `bootnuttx` remain
