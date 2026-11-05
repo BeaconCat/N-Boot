@@ -216,11 +216,11 @@ No bootctrl format change is needed. The loader reads domain 1's active slot,
 checks its priority, size and SHA-256, and stages at 0x60000000 with a 64 MiB
 limit. It does not select a different AMP slot automatically.
 
-An unconfirmed slot needs a nonzero `tries_remaining`. The loader persists a
-decrement before loading its payload or starting any kernel. Updated nbootctl
-staging/activation grants one AMP trial. A reset before confirmation therefore
-returns to ordinary NuttX after that trial is consumed. Ordinary NuttX's
-zero-try boot eligibility is unchanged.
+A slot is eligible when its priority and image size are nonzero, including
+unconfirmed slots with zero `tries_remaining`. A remaining trial is accounted
+before loading the payload; exhausting it does not disable the slot. Read or
+validation failures return to the NuttX boot path without clearing the AMP
+slot's priority. Ordinary NuttX's zero-try eligibility is unchanged.
 
 After observing a successful AMP health/info exchange, reboot to ordinary
 NuttX and explicitly mark that AMP slot successful with nbootctl. Confirmed
