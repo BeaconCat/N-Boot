@@ -503,6 +503,14 @@ static int do_bootnuttx(struct cmd_tbl *cmdtp, int flag, int argc,
 			return CMD_RET_FAILURE;
 		}
 
+		/* A transport failure does not prove that the slot is corrupt. */
+		if (ret == -EIO) {
+			free(records);
+			printf("bootnuttx: slot %c could not be read (%d); slot metadata left unchanged\n",
+			       'a' + chosen, ret);
+			return CMD_RET_FAILURE;
+		}
+
 		printf("bootnuttx: slot %c rejected (%d)\n", 'a' + chosen,
 		       ret);
 		slot->priority = 0;
