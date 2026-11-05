@@ -271,7 +271,7 @@ int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size)
 
 	/* Persist the trial count before any payload or kernel can fail. */
 
-	if (!slot->successful) {
+	if (!slot->successful && slot->tries_remaining) {
 		slot->tries_remaining--;
 		ret = k7_bootctrl_write(storage.desc, &control, records,
 					selected);
