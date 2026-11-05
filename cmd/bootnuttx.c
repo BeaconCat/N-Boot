@@ -253,8 +253,8 @@ int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size)
 	}
 	slot = &domain->slots[active];
 	image_size = le64_to_cpu(slot->image_size);
-	if (!slot->priority || !image_size ||
-	    (!slot->successful && !slot->tries_remaining)) {
+	/* Activated zero-try slots remain eligible, as in the NuttX domain. */
+	if (!slot->priority || !image_size) {
 		ret = -ENOENT;
 		goto out;
 	}

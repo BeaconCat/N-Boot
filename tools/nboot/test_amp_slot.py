@@ -99,8 +99,8 @@ int main(void)
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
   assert(writes==1 && reads==1 && !saved.domains[1].slots[1].tries_remaining);
   assert(!memcmp(&nuttx,&saved.domains[0],sizeof(nuttx)));
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && size==0);
-  assert(writes==1 && reads==1);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
+  assert(reads==2);
   setup(1,0);
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
@@ -118,7 +118,8 @@ int main(void)
   setup(1,0);saved.domains[1].slots[1].image_size=0;
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && !writes);
   setup(0,0);
-  assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && !writes);
+  assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
+  assert(reads==1);
   setup(0,1);saved.domains[1].active_slot=2;
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EINVAL && !writes);
   setup(0,1);fault=1;

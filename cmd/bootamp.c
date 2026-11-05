@@ -418,6 +418,6 @@ static int do_bootamp(struct cmd_tbl *cmdtp, int flag, int argc,
 U_BOOT_CMD(bootamp, 4, 0, do_bootamp,
 	   "cold-boot a validated four-A53/four-A72 AMP FIT",
 	   "\n"
-	   "    - load the active AMP slot; unconfirmed images need a trial\n"
+	   "    - load the active AMP slot; activated zero-try slots are eligible\n"
 	   "bootamp <fit-address> <fit-size> [check]\n"
 	   "    - hexadecimal address/size; check validates without loading");
