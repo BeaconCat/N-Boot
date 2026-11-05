@@ -10,18 +10,28 @@ root = Path(__file__).resolve().parents[2]
 source = (root / "cmd/bootnuttx.c").read_text()
 types = source[source.index("struct k7_slot_disk {"):source.index("_Static_assert")]
 defines = "\n".join(re.findall(r"^#define K7_.*$", source, re.M))
-match = re.search(r"int nboot_amp_load_slot\([^;]*?\)\n\{", source)
-assert match
-end, depth = match.end(), 1
-while depth:
-    depth += (source[end] == "{") - (source[end] == "}")
-    end += 1
-loader = source[match.start():end]
+
+
+def extract(pattern):
+    match = re.search(pattern, source)
+    assert match
+    end, depth = match.end(), 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    return source[match.start():end]
+
+
+# One attempt at the slot, and the loop that repeats it while the medium does
+# not answer.
+loader = (extract(r"static int nboot_amp_load_slot_once\([^;]*?\)\n\{") + "\n" +
+          extract(r"int nboot_amp_load_slot\([^;]*?\)\n\{"))
 program = r'''
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <malloc.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -49,7 +59,14 @@ static struct nboot_amp_origin origin;
 static struct blk_desc disk = {512};
 static struct k7_bootctrl_disk saved;
 static unsigned char payload[1024], staging[1024];
-static int writes, reads, fault;
+static int writes, reads, fault, heals, budget, retries;
+/* The real one also waits and re-initialises the card; what matters to the
+ * loader is only when it is told to go round again.
+ */
+static bool nboot_storage_retry(const char *who,int error)
+{ assert(!strcmp(who,"bootamp") && error);
+  if(error!=-EIO || !budget)return false;
+  budget--;retries++;return true; }
 static int nboot_storage_open_boot(struct nboot_storage *s)
 { s->desc=&disk;s->medium=2;return fault==1?-ENODEV:0; }
 static int part_get_info_by_name(struct blk_desc *d,const char *name,
@@ -74,7 +91,7 @@ static void *map_sysmem(ulong address,ulong size)
 static void unmap_sysmem(void *p) {assert(p==staging);}
 static ulong blk_dread(struct blk_desc *d,ulong start,ulong blocks,void *p)
 { (void)d;assert(start==400 && blocks==2);reads++;
-  if(fault==4)return 0;
+  if(fault==4){if(heals)fault=0;return 0;}
   memcpy(p,payload,1024);return blocks; }
 static int hash_block(const char *name,const void *p,unsigned int size,
                        void *digest,int *digest_size)
@@ -92,7 +109,7 @@ static void setup(int confirmed,int tries)
   struct k7_slot_disk *s=&saved.domains[1].slots[1];
   s->priority=15;s->successful=confirmed;s->tries_remaining=tries;
   s->image_size=513;s->image_version=7;
-  SHA256(payload,513,s->sha256);writes=reads=fault=0;
+  SHA256(payload,513,s->sha256);writes=reads=fault=heals=budget=retries=0;
 }
 int main(void)
 {
@@ -147,7 +164,30 @@ int main(void)
   assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENODEV && !writes);
   setup(0,1);fault=2;
   assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENOENT && !writes);
-  puts("AMP_SLOT_PASS trial confirmed empty bounds read hash write failures");
+  /* A read that fails once: the slot loads on the second attempt, and the
+   * boot still costs exactly one trial.
+   */
+  setup(0,1);fault=4;heals=1;budget=5;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0 && size==513);
+  assert(retries==1 && reads==2 && writes==1);
+  assert(!saved.domains[1].slots[1].tries_remaining && origin.slot==1);
+  /* A medium that never answers uses up what it is given and no more. */
+  setup(0,1);fault=4;budget=2;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EIO);
+  assert(retries==2 && reads==3 && writes==1);
+  /* An answer is not retried: no such device, empty slot, bad digest,
+   * wrong size.
+   */
+  setup(0,1);fault=1;budget=5;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENODEV && !retries);
+  setup(1,0);saved.domains[1].slots[1].image_size=0;budget=5;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-ENOENT && !retries);
+  setup(0,1);payload[0]^=1;budget=5;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EKEYREJECTED);
+  assert(!retries && reads==1);
+  setup(0,1);budget=5;
+  assert(nboot_amp_load_slot(0x60000000,512,&size,&origin)==-EFBIG && !retries);
+  puts("AMP_SLOT_PASS trial confirmed empty bounds read hash write failures retry");
   return 0;
 }
 '''
