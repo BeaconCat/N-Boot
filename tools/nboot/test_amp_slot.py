@@ -99,8 +99,14 @@ int main(void)
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
   assert(writes==1 && reads==1 && !saved.domains[1].slots[1].tries_remaining);
   assert(!memcmp(&nuttx,&saved.domains[0],sizeof(nuttx)));
+  /* Consuming the last trial does not make the slot ineligible: eligibility
+   * is priority alone, so an activated slot keeps booting whether or not an
+   * OS ever confirmed it.  A freshly activated slot has zero tries by
+   * construction, and requiring one would leave the AMP domain permanently
+   * on the other side.  The trial is still consumed exactly once.
+   */
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
-  assert(reads==2);
+  assert(writes==1 && reads==2 && !saved.domains[1].slots[1].tries_remaining);
   setup(1,0);
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0);
@@ -117,9 +123,15 @@ int main(void)
   assert(nboot_amp_load_slot(0x60000000,512,&size)==-EFBIG && !writes && !reads);
   setup(1,0);saved.domains[1].slots[1].image_size=0;
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==-ENOENT && !writes);
+  /* An unconfirmed slot with no tries left still loads.  That combination is
+   * exactly what activation produces, so refusing it would make every
+   * freshly activated AMP slot unbootable.  Note the write count: with the
+   * trial already used up there is nothing to decrement, so bootctrl must
+   * not be rewritten on this path.
+   */
   setup(0,0);
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==0 && size==513);
-  assert(reads==1);
+  assert(writes==0 && reads==1);
   setup(0,1);saved.domains[1].active_slot=2;
   assert(nboot_amp_load_slot(0x60000000,1024,&size)==-EINVAL && !writes);
   setup(0,1);fault=1;
