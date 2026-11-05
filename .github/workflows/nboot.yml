@@ -26,6 +26,7 @@ jobs:
           python3 tools/nboot/test_early_dm.py
           python3 tools/nboot/test_reboot_request.py
           python3 tools/nboot/test_fastboot_usb.py
+          python3 tools/nboot/test_storage_retry.py
 
   amp:
     name: AMP FIT and boot flow

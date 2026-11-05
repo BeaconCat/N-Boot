@@ -33,6 +33,21 @@ struct nboot_storage {
 int nboot_storage_boot_devnum(void);
 int nboot_storage_open(int devnum, struct nboot_storage *storage);
 int nboot_storage_open_boot(struct nboot_storage *storage);
+
+/*
+ * nboot_storage_open*() and the block reads behind them report -EIO when the
+ * medium is there but does not answer, as opposed to answering with something
+ * N-Boot cannot use (no card, a foreign layout, a bad image).  Only the first
+ * is worth another attempt.
+ *
+ * nboot_storage_retry() decides whether a slot loader runs its medium access
+ * again after such an error.  When it returns true it has logged the retry,
+ * waited, and made the next open re-initialise the card from CMD0, which is
+ * what typing "mmc dev 1" at the prompt does.  The retries are one budget for
+ * the whole boot, so a medium that stays silent costs a bounded delay once,
+ * not once per loader.  A first attempt that succeeds never gets here.
+ */
+bool nboot_storage_retry(const char *who, int error);
 void nboot_storage_reset_target(void);
 int nboot_storage_set_target(enum nboot_boot_medium medium);
 const char *nboot_storage_target_name(void);
