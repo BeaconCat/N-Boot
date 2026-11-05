@@ -120,8 +120,9 @@ static int do_fastboot_usb(int argc, char *const argv[],
 	ret = CMD_RET_SUCCESS;
 
 exit:
-	udc_device_put(udc);
+	/* Disconnect while the controller registers are still available. */
 	g_dnl_unregister();
+	udc_device_put(udc);
 	g_dnl_clear_detach();
 
 	return ret;
