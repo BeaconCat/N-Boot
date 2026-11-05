@@ -17,6 +17,8 @@ while depth:
 function = source[match.start():end]
 program = r'''
 #include <assert.h>
+#include <errno.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,11 +34,13 @@ struct k7_bootctrl_disk { unsigned char padding[4]; };
 struct disk_partition { int dummy; };
 struct nboot_storage { void *desc; };
 static u32 saved;
-static int writes, error;
+static int writes, error, silent, retries;
 static void *memalign(size_t alignment, size_t size)
 { (void)alignment; return calloc(1, size); }
 static int nboot_storage_open_boot(struct nboot_storage *s)
-{ s->desc = NULL; return 0; }
+{ s->desc = NULL; if (silent) { silent--; return -EIO; } return 0; }
+static bool nboot_storage_retry(const char *who, int e)
+{ assert(!strcmp(who, "N-Boot") && e == -EIO); retries++; return retries <= 2; }
 static int part_get_info_by_name(void *d, const char *n, struct disk_partition *p)
 { (void)d; (void)p; assert(!strcmp(n,"bootctrl")); return 0; }
 static int k7_bootctrl_read(void *d, struct disk_partition *p,
@@ -63,6 +67,13 @@ int main(void)
   assert(nboot_bootctrl_take_request()==0 && writes==1 && saved==0);
   saved=NBOOT_REBOOT_MAGIC|1; writes=0; error=1;
   assert(nboot_bootctrl_take_request()==0 && writes==1 && saved!=0);
+  /* A medium that answers on the second try still delivers the request in
+   * this boot; one that stays silent leaves it on the disk, unconsumed.
+   */
+  saved=NBOOT_REBOOT_MAGIC|2; writes=0; error=0; silent=1; retries=0;
+  assert(nboot_bootctrl_take_request()==2 && retries==1 && saved==0);
+  saved=NBOOT_REBOOT_MAGIC|2; writes=0; silent=100; retries=0;
+  assert(nboot_bootctrl_take_request()==0 && retries==3 && !writes && saved!=0);
   return 0;
 }
 '''
@@ -72,4 +83,4 @@ with tempfile.TemporaryDirectory() as tmp:
     c.write_text(program)
     subprocess.run(['cc', '-Wall', '-Wextra', '-Werror', str(c), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
-print('REBOOT_REQUEST_PASS targets=4 one-shot invalid-target write-failure')
+print('REBOOT_REQUEST_PASS targets=4 one-shot invalid-target write-failure retry')

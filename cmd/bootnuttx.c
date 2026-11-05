@@ -193,14 +193,23 @@ int nboot_bootctrl_take_request(void)
 	struct nboot_storage storage;
 	u32 request;
 	int selected, target = 0;
+	int ret;
 
-	if (nboot_storage_open_boot(&storage) ||
-	    part_get_info_by_name(storage.desc, "bootctrl", &control) < 0)
-		return 0;
 	records = memalign(ARCH_DMA_MINALIGN, sizeof(*records) * 2);
 	if (!records)
 		return 0;
-	if (k7_bootctrl_read(storage.desc, &control, records, &selected))
+
+	/* A request that is not consumed now would fire on some later boot. */
+	do {
+		ret = nboot_storage_open_boot(&storage);
+		if (!ret && part_get_info_by_name(storage.desc, "bootctrl",
+						  &control) < 0)
+			ret = -ENOENT;
+		if (!ret)
+			ret = k7_bootctrl_read(storage.desc, &control, records,
+					       &selected);
+	} while (ret && nboot_storage_retry("N-Boot", ret));
+	if (ret)
 		goto out;
 	memcpy(&request, records[selected].padding, sizeof(request));
 	request = le32_to_cpu(request);
