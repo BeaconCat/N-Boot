@@ -197,9 +197,10 @@ line:
 bootamp: boot medium not ready (-5); re-initialising, retry 1/5 in 200 ms
 ```
 
-The budget is shared by the request reader, `bootamp` and `bootnuttx`, so a
-medium that stays silent delays the fall-through to Fastboot by about six
-seconds once, not once per command. A first attempt that succeeds never waits.
+The budget is shared by the request reader, `bootamp` and `bootnuttx`, so the
+retry backoff adds at most 6.2 seconds in total, not once per command. Card
+initialisation and I/O timeout time is additional; 6.2 seconds is not a bound
+on the whole boot attempt. A successful first attempt has no retry backoff.
 One boot still consumes at most one AMP trial, and a NuttX slot whose payload
 could not be read keeps its priority: only a payload that was read and failed
 its checks disables the slot.
