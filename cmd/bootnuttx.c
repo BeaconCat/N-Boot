@@ -88,6 +88,7 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 			    struct k7_bootctrl_disk *records,
 			    int *selected)
 {
+	bool unread = false;
 	int index;
 	int best = -1;
 
@@ -99,8 +100,10 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 	for (index = 0; index < K7_BOOTCTRL_COPY_COUNT; index++) {
 		if (blk_dread(desc, partition->start + index * K7_BOOTCTRL_BLOCKS,
 			      K7_BOOTCTRL_BLOCKS, &records[index]) !=
-		    K7_BOOTCTRL_BLOCKS)
+		    K7_BOOTCTRL_BLOCKS) {
+			unread = true;
 			continue;
+		}
 		if (!k7_bootctrl_valid(&records[index]))
 			continue;
 		if (best < 0 ||
@@ -109,8 +112,9 @@ static int k7_bootctrl_read(struct blk_desc *desc,
 			best = index;
 	}
 
+	/* -EIO only when a copy that might have been valid was never seen. */
 	if (best < 0)
-		return -EBADMSG;
+		return unread ? -EIO : -EBADMSG;
 	*selected = best;
 	return 0;
 }
