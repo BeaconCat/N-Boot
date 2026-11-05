@@ -584,7 +584,7 @@ out:
 void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 {
 	static const char * const names[] = {
-		"nuttx_a", "nuttx_b"
+		"nuttx_a", "nuttx_b", "amp_a", "amp_b"
 	};
 	struct k7_bootctrl_disk *records;
 	struct disk_partition control, part;
