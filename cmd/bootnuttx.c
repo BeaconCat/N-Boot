@@ -512,7 +512,7 @@ static int k7_recovery_flash(struct blk_desc *desc,
 			     const struct disk_partition *part,
 			     struct k7_bootctrl_disk *records, int selected,
 			     struct k7_slot_disk *slot, const void *data,
-			     u32 size)
+			     u32 size, int slot_domain)
 {
 	u8 digest[K7_SHA256_SIZE], actual[K7_SHA256_SIZE];
 	u8 *tail;
@@ -524,8 +524,25 @@ static int k7_recovery_flash(struct blk_desc *desc,
 
 	if (!size || DIV_ROUND_UP((u64)size, desc->blksz) > part->size)
 		return -EFBIG;
-	if (size < 60 || memcmp((const u8 *)data + 56, "ARMd", 4))
+
+	/* A slot's payload has the shape its domain boots.  An NuttX slot takes
+	 * a bare ARM64 image, which carries the "ARMd" magic at offset 56; an
+	 * AMP slot takes a FIT, which starts with its own magic.  Requiring the
+	 * ARM64 header on both would reject every AMP image, and accepting
+	 * either everywhere would let a mismatched payload be written and only
+	 * fail much later, at boot, with no record of what went on the slot.
+	 */
+
+	if (slot_domain < 0 || slot_domain > K7_AMP_DOMAIN)
+		return -EINVAL;
+	if (slot_domain == K7_AMP_DOMAIN) {
+		if (size < 8 ||
+		    memcmp((const u8 *)data, "\xd0\x0d\xfe\xed", 4))
+			return -ENOEXEC;
+	} else if (size < 60 ||
+		   memcmp((const u8 *)data + 56, "ARMd", 4)) {
 		return -ENOEXEC;
+	}
 	ret = hash_block("sha256", data, size, digest, &digest_size);
 	if (ret || digest_size != sizeof(digest))
 		return -EINVAL;
@@ -642,7 +659,7 @@ void fastboot_oem_board(char *parameter, void *data, u32 size, char *response)
 	slot = &domain->slots[i % 2];
 	if (flash) {
 		ret = k7_recovery_flash(desc, &control, &part, records,
-					selected, slot, data, size);
+					selected, slot, data, size, i / 2);
 	} else {
 		ret = k7_recovery_hash(desc, &part,
 				       le64_to_cpu(slot->image_size), digest);
