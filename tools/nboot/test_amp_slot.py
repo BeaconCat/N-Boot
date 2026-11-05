@@ -85,7 +85,10 @@ static int k7_bootctrl_write(struct blk_desc *d,struct disk_partition *p,
                              struct k7_bootctrl_disk *r,int selected)
 { (void)d;assert(p->start==100 && selected==1);writes++;
   if(fault==3)return -EIO;
-  r[selected].generation++;saved=r[selected];return 0; }
+  if(fault==6){fault=0;return -EIO;}
+  r[selected].generation++;saved=r[selected];
+  if(fault==5){fault=0;return -EIO;}
+  return 0; }
 static void *map_sysmem(ulong address,ulong size)
 { assert(address==0x60000000 && size==1024);return staging; }
 static void unmap_sysmem(void *p) {assert(p==staging);}
@@ -171,6 +174,18 @@ int main(void)
   assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0 && size==513);
   assert(retries==1 && reads==2 && writes==1);
   assert(!saved.domains[1].slots[1].tries_remaining && origin.slot==1);
+  /* One valid bootctrl copy can reach storage before its verification read fails.
+   * Retrying must not charge another trial from that newer generation.
+   */
+  setup(0,3);fault=5;budget=2;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0);
+  assert(retries==1 && writes==1 && reads==1);
+  assert(saved.domains[1].slots[1].tries_remaining==2 && origin.generation==42);
+  /* If no copy reached storage, retry the same decrement before loading. */
+  setup(0,3);fault=6;budget=2;
+  assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==0);
+  assert(retries==1 && writes==2 && reads==1);
+  assert(saved.domains[1].slots[1].tries_remaining==2 && origin.generation==42);
   /* A medium that never answers uses up what it is given and no more. */
   setup(0,1);fault=4;budget=2;
   assert(nboot_amp_load_slot(0x60000000,1024,&size,&origin)==-EIO);
@@ -187,7 +202,7 @@ int main(void)
   assert(!retries && reads==1);
   setup(0,1);budget=5;
   assert(nboot_amp_load_slot(0x60000000,512,&size,&origin)==-EFBIG && !retries);
-  puts("AMP_SLOT_PASS trial confirmed empty bounds read hash write failures retry");
+  puts("AMP_SLOT_PASS trial confirmed empty bounds read hash write failures retry partial_write");
   return 0;
 }
 '''
