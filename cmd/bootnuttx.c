@@ -244,7 +244,7 @@ int nboot_amp_boot_medium(unsigned int *medium)
 static int nboot_amp_load_slot_once(ulong address, ulong capacity,
 				    ulong *size,
 				    struct nboot_amp_origin *origin,
-				    bool *trial_consumed)
+				    int *trial_remaining)
 {
 	struct k7_bootctrl_disk *records;
 	struct disk_partition control, partition;
@@ -299,13 +299,20 @@ static int nboot_amp_load_slot_once(ulong address, ulong capacity,
 
 	/* Persist the trial count before any payload or kernel can fail. */
 
-	if (!*trial_consumed && !slot->successful && slot->tries_remaining) {
-		slot->tries_remaining--;
-		ret = k7_bootctrl_write(storage.desc, &control, records,
-					selected);
-		if (ret)
-			goto out;
-		*trial_consumed = true;
+	if (!slot->successful && slot->tries_remaining) {
+		/* A failed write may already have committed one valid copy.
+		 * Keep the intended counter across retries instead of charging
+		 * again when that newer copy is selected on the next read.
+		 */
+		if (*trial_remaining < 0)
+			*trial_remaining = slot->tries_remaining - 1;
+		if (slot->tries_remaining > *trial_remaining) {
+			slot->tries_remaining = *trial_remaining;
+			ret = k7_bootctrl_write(storage.desc, &control, records,
+						selected);
+			if (ret)
+				goto out;
+		}
 	}
 	image = map_sysmem(address, blocks * storage.desc->blksz);
 	if (blk_dread(storage.desc, partition.start, blocks, image) != blocks) {
@@ -337,7 +344,7 @@ out:
 int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
 			struct nboot_amp_origin *origin)
 {
-	bool trial_consumed = false;
+	int trial_remaining = -1;
 	int ret;
 
 	/* A medium that does not answer is tried again from a fresh card
@@ -347,7 +354,7 @@ int nboot_amp_load_slot(ulong address, ulong capacity, ulong *size,
 	 */
 	do {
 		ret = nboot_amp_load_slot_once(address, capacity, size, origin,
-					       &trial_consumed);
+					       &trial_remaining);
 	} while (ret && nboot_storage_retry("bootamp", ret));
 
 	return ret;
